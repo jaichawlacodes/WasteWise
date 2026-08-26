@@ -22,20 +22,14 @@ export default function LeaderboardPage() {
     const fetchRewardsAndUser = async () => {
       setLoading(true)
       try {
-        const fetchedRewards = await getLeaderboardRewards()
-        setRewards(fetchedRewards)
-
         const userEmail = localStorage.getItem('userEmail')
-        if (userEmail) {
-          const fetchedUser = await getUserByEmail(userEmail)
-          if (fetchedUser) {
-            setUser(fetchedUser)
-          } else {
-            toast.error('User not found. Please log in again.')
-          }
-        } else {
-          toast.error('User not logged in. Please log in.')
-        }
+        const [fetchedRewards, fetchedUser] = await Promise.all([
+          getLeaderboardRewards(),
+          userEmail ? getUserByEmail(userEmail) : Promise.resolve(null),
+        ])
+        setRewards(fetchedRewards)
+        setUser(fetchedUser)
+        if (!fetchedUser) toast.error(userEmail ? 'User not found. Please log in again.' : 'User not logged in. Please log in.')
       } catch (error) {
         console.error('Error fetching rewards and user:', error)
         toast.error('Failed to load leaderboard. Please try again.')

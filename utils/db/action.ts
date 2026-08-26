@@ -1,3 +1,5 @@
+'use server';
+
 import { db } from './dbConfig';
 import { Users, Reports, Rewards, CollectedWastes, Notifications, Transactions } from './schema';
 import { eq, sql, and, desc } from 'drizzle-orm';
@@ -38,6 +40,27 @@ export async function getUserById(userId?: number) {
     console.error("Error fetching user by id:", error);
     return null;
   }
+}
+
+export async function getHeaderData(email?: string) {
+  const user = await getUserByEmail(email);
+  if (!user?.id) return null;
+
+  const [notifications, transactions] = await Promise.all([
+    getUnreadNotifications(user.id),
+    getRewardTransactions(user.id),
+  ]);
+  const balance = transactions.reduce((total, transaction) => (
+    transaction.type.startsWith('earned')
+      ? total + transaction.amount
+      : total - transaction.amount
+  ), 0);
+
+  return {
+    user,
+    notifications,
+    balance: Math.max(balance, 0),
+  };
 }
 
 /**
@@ -275,7 +298,7 @@ export async function getRecentReports(limit: number = 10) {
   }
 }
 
-export async function getLeaderboardRewards() {
+export async function getLeaderboardRewards(limit: number = 100) {
   try {
     const rewards = await db
       .select({
@@ -289,6 +312,7 @@ export async function getLeaderboardRewards() {
       .from(Rewards)
       .leftJoin(Users, eq(Rewards.userId, Users.id))
       .orderBy(desc(Rewards.points))
+      .limit(limit)
       .execute();
 
     return rewards.map((reward) => ({
@@ -425,11 +449,11 @@ export async function getUserBalance(userId?: number): Promise<number> {
 /**
  * AVAILABLE REWARDS
  */
-export async function getAvailableRewards(userId?: number) {
+export async function getAvailableRewards(userId?: number, userPoints?: number) {
   if (!userId) return [];
 
   try {
-    const userPoints = await getUserBalance(userId);
+    const points = userPoints ?? await getUserBalance(userId);
 
     const dbRewards = await db
       .select({
@@ -447,7 +471,7 @@ export async function getAvailableRewards(userId?: number) {
       {
         id: 0,
         name: "Your Points",
-        cost: userPoints,
+        cost: points,
         description: "Redeem your earned points",
         collectionInfo: "Points earned from reporting and collecting waste"
       },

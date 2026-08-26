@@ -1,0 +1,718 @@
+WASTIFY PERFORMANCE AUDIT REPORT
+================================
+
+Audit date: 2026-08-27
+Repository: my-app
+Framework: Next.js 14.2.16, React 18, TypeScript 5
+Audit type: Read-only investigation. No application source files were changed for this audit.
+
+Confidence and measurement limits
+---------------------------------
+This report is based on inspection of the repository, production build output, installed dependency inventory, and the supplied runtime console log. Measurements are separated from estimates. No Lighthouse run, browser trace, network waterfall, CPU profile, Core Web Vitals capture, or production database timing was available, so those values are not fabricated here.
+
+The repository contained 59 tracked/workspace files in the inspected source/configuration inventory. The production build completed successfully with Next.js static output. Installed-package disk size is not the same as browser bundle size; it is included only as an indicator of dependency footprint and transitive complexity.
+
+
+1. PROJECT ARCHITECTURE
+=======================
+
+Application shape
+-----------------
+- Next.js 14 App Router project with a server root layout at app/layout.tsx.
+- Ten user-facing routes are present: /, /calculator, /collect, /leaderboard, /messages, /report, /rewards, /settings, /verify, and the generated not-found route.
+- Most route files are client components and perform their own data fetching in useEffect.
+- The root layout dynamically imports components/Header.tsx with ssr: false. This avoids server rendering for the header, but adds a client-only boundary and a loading placeholder around a globally present component.
+- app/page.tsx is a client component and combines the landing page, Cobe canvas globe, Framer Motion effects, impact-data fetching, and an embedded chatbot component definition.
+- UI primitives are mostly local shadcn/Radix-style components under components/ui.
+- There is no visible middleware, API route, server action, React context provider, cache layer, request library, or performance instrumentation.
+
+Shared shell
+------------
+- app/layout.tsx loads Inter globally through next/font/google.
+- The global Header is dynamically imported with server-side rendering disabled.
+- react-hot-toast is mounted globally through Toaster, so toast code is part of the shared application surface.
+- Leaflet CSS is imported globally from the layout even though the currently inspected routes do not render components/Map.tsx.
+- The body uses a full-page flex shell and every route is rendered inside the same client-heavy header context.
+
+Data and backend boundary
+-------------------------
+- utils/db/dbConfig.jsx creates a Neon HTTP connection and Drizzle database instance from DATABASE_URL.
+- utils/db/action.ts contains reads and writes for users, reports, rewards, transactions, notifications, collection tasks, and collected waste.
+- Client route files directly import functions from utils/db/action.ts. The architectural intent appears to be browser-side invocation of database wrappers, although this is also a security and bundling concern.
+- next.config.mjs places DATABASE_URL in the Next.js env configuration. Values under next.config.js/mjs env are statically made available to application code and must not be used for secrets intended to remain server-only.
+- Database calls are generally executed after hydration from useEffect rather than being fetched in server components.
+- There is no shared request cache or deduplication across Header, pages, and helper functions.
+
+Authentication and Web3
+----------------------
+- components/Header.tsx imports @web3auth/modal, @web3auth/base, and @web3auth/ethereum-provider.
+- Web3Auth is constructed at module scope and initialized from the global header on every route visit.
+- The header also polls notifications every 30 seconds after mounting and separately fetches the user and balance.
+- components/Map.tsx and components/ContractInteraction.tsx contain additional Lit Protocol/session-signature/Web3 integration, but references point to modules that were not present in the workspace inventory. They appear to be stale or inactive code paths.
+
+External services
+-----------------
+- Google Generative AI is imported directly into /collect, /report, and /messages and called from the browser.
+- @react-google-maps/api loads the Google Maps Places library on /report.
+- app/page.tsx contains a GPT Trainer iframe inside ChatSection. The ChatSection is currently defined but its visible invocation is commented out, so it does not appear to load on the current home route.
+- Web3Auth opens external authentication UI and uses an Ethereum RPC endpoint.
+- Leaflet/Map uses OpenStreetMap tiles if that stale component is activated.
+
+
+2. CURRENT PERFORMANCE PROFILE
+==============================
+
+Measured production build output
+---------------------------------
+The command npm run build completed successfully. Next reported these route sizes:
+
+Route             Route size     First Load JS
+/                 8.81 kB        349 kB
+/_not-found       876 B          88.5 kB
+/calculator       10.7 kB        125 kB
+/collect          8.51 kB        313 kB
+/leaderboard      5.06 kB        297 kB
+/messages        2.54 kB         95.8 kB
+/report          40.3 kB         345 kB
+/rewards          3.71 kB        306 kB
+/settings         3.08 kB        97.9 kB
+/verify           3.3 kB         98.1 kB
+
+Shared First Load JS reported by Next: 87.6 kB.
+The .next/static directory measured approximately 825,493 bytes in the inspected build. This is an aggregate of generated static assets, not a single network request and not a compressed transfer measurement.
+
+Largest route observations
+--------------------------
+- Home is the largest initial route at 349 kB First Load JS. It combines the global shell, Framer Motion, Cobe, Poppins, icons, and client-side data logic.
+- Report is 345 kB and combines Gemini, Google Maps Places, database code, image preview/base64 work, and a large form/history UI.
+- Collect is 313 kB and combines Gemini, database logic, upload/base64 work, task rendering, search, and verification modal state.
+- Rewards is 306 kB and leaderboard is 297 kB despite relatively simple visual content, indicating shared/client/database dependencies dominate more than markup size.
+- Calculator, settings, verify, and messages are materially lighter, but remain client-rendered and inherit the global header/shared payload.
+
+Installed dependency footprint indicators
+-----------------------------------------
+The following top-level node_modules directory sizes were measured on disk. These are not minified browser contributions, but reveal transitive weight and maintenance surface:
+
+- @next: approximately 135,948,539 bytes
+- next: approximately 86,469,745 bytes
+- lucide-react: approximately 34,709,389 bytes
+- typescript: approximately 22,742,077 bytes
+- viem: approximately 17,411,489 bytes
+- ethers: approximately 17,067,277 bytes
+- drizzle-orm: approximately 8,170,149 bytes
+- @react-google-maps: approximately 7,069,455 bytes
+- @web3auth: approximately 5,429,937 bytes
+- leaflet: approximately 3,739,487 bytes
+- framer-motion: approximately 2,327,012 bytes
+
+Disk size includes source maps, types, duplicated/transitive files, and packages that may never ship to the browser. The important signal is that the project carries overlapping blockchain ecosystems (viem and ethers transitively/installed), Web3Auth, Google Maps, Gemini, Leaflet, Framer Motion, Drizzle/Neon, and Radix primitives in one small application.
+
+Runtime evidence from consoleErrors.txt
+---------------------------------------
+The supplied runtime log records:
+- Repeated Header user-info console output during development renders.
+- Web3Auth initialization and login failures caused by a 401 RPC response from rpc.ankr.com.
+- Gemini 404 response for gemini-2.0-flash in the logged environment.
+- Google Maps SearchBox deprecation/availability warning.
+- Hydration warning for an extra bis_skin_checked attribute, likely injected by an extension or external tooling rather than application rendering.
+- Cross-Origin-Opener-Policy warnings from the authentication popup handler.
+- Next Image LCP warning for /w.png before priority was added in the inspected working tree.
+- Browser extension message-channel warnings.
+These errors increase startup noise and can represent real wasted work, especially the Web3Auth and external service failures.
+
+Not measured
+------------
+- FCP, LCP, CLS, INP, TBT, total blocking time, memory, frame rate, and interaction latency.
+- Compressed transfer sizes and exact per-module JavaScript contribution.
+- Number and timing of database requests in a production deployment.
+- Actual image byte dimensions. The asset files were identified, but the available listing did not expose reliable byte sizes for the public image files.
+- Lighthouse score or a browser request waterfall.
+
+
+3. BIGGEST SOURCES OF WEIGHT
+============================
+
+A. Global Web3Auth loading and initialization
+----------------------------------------------
+Where: components/Header.tsx, imported by app/layout.tsx.
+
+The header imports Web3Auth and Ethereum provider packages globally. On every route, its mount effect calls initModal(), even when the visitor does not intend to log in. This pulls authentication code into the shared experience, performs startup work, and can initiate provider/network activity before any auth interaction.
+
+Why expensive:
+- Large auth UI/provider dependency and transitive crypto code.
+- Module evaluation and initialization on every page.
+- External RPC/auth work competing with page hydration.
+- Runtime failures can trigger retries, popup work, and console errors.
+
+Likely impact: critical to high for first interaction and mobile startup; moderate to high for shared JavaScript weight.
+
+B. Home Cobe canvas and animation loop
+--------------------------------------
+Where: app/page.tsx, Globe component.
+
+Cobe is configured with mapSamples: 4000 and a 600 by 600 canvas, displayed up to 700px wide. createGlobe starts a continuous render loop. onRender updates phi every frame. The canvas is not paused for document visibility, viewport visibility, reduced-motion preference, or low-power devices.
+
+Why expensive:
+- Persistent CPU/GPU work, not just load-time work.
+- High-DPI and canvas rendering can drain battery and contend with scrolling/hydration.
+- 4,000 map samples increase globe generation/render workload.
+- Framer Motion animates the globe wrapper in addition to the canvas loop.
+
+Likely impact: high runtime cost on home, especially mobile and background tabs.
+
+C. Browser-side database access and duplicated queries
+------------------------------------------------------
+Where: app/page.tsx, Header.tsx, collect/report/rewards/leaderboard, utils/db/action.ts, next.config.mjs.
+
+Home executes getRecentReports(100), getAllRewards(), and getWasteCollectionTasks(100) sequentially despite independent queries. Header separately looks up the same user for notifications and balance. getUserBalance() calls getRewardTransactions(), and rewards also fetches transactions directly.
+
+Why expensive:
+- Multiple network round trips after hydration.
+- Sequential home requests add their latencies.
+- Repeated user lookups and transaction reads increase database/serverless work.
+- Client-side imports prevent clean server-only bundling and caching.
+
+Likely impact: high for time until meaningful data appears and for database cost; critical security concern because DATABASE_URL is configured through next.config.mjs.
+
+D. Google Maps Places on the report route
+-----------------------------------------
+Where: app/report/page.tsx, useJsApiLoader({ libraries: ["places"] }).
+
+The Places library is loaded when the report page initializes, before the user necessarily focuses the location field. StandaloneSearchBox uses a legacy API and the runtime log says SearchBox is not available to new customers as of March 1, 2025.
+
+Why expensive:
+- Large third-party script, DNS, TLS, parsing, and execution cost.
+- It is not needed for the initial report form if the user never chooses autocomplete.
+- The current API may fail or require migration.
+
+Likely impact: high on /report initial load and medium on all other routes because it is route-local.
+
+E. Gemini SDK and base64 image handling
+---------------------------------------
+Where: collect/page.tsx, report/page.tsx, messages/page.tsx.
+
+Gemini is imported into three client routes. Report and collect use FileReader.readAsDataURL(), retain the full data URL in React state, then send the decoded base64 data to Gemini. Report also passes preview data to createReport. The database schema stores image data in a text field.
+
+Why expensive:
+- AI SDK code ships to the browser for every affected route.
+- Base64 expands binary data by roughly one third before JSON/database overhead.
+- Large strings occupy React/browser memory and are copied during state updates and requests.
+- Uploads can increase request latency and risk body-size/time-out failures.
+
+Likely impact: high during report/collection interactions; medium to high route bundle cost.
+
+F. Broad client-side route boundaries
+-------------------------------------
+Where: app/calculator/page.tsx, app/collect/page.tsx, app/leaderboard/page.tsx, app/messages/page.tsx, app/report/page.tsx, app/rewards/page.tsx, app/settings/page.tsx, app/verify/page.tsx, and app/page.tsx.
+
+Most route content, including static headings, descriptions, tables, and layout markup, is behind use client. This prevents server rendering of otherwise static portions and increases hydration work.
+
+Likely impact: medium to high, varying by route.
+
+G. Framer Motion and repeated effects
+-------------------------------------
+Where: app/page.tsx and components/Header.tsx; motion elements also appear in landing cards.
+
+The home page uses entrance animations, AnimatePresence, whileInView, hover scaling, springs, and multiple motion elements. Header also animates its mount and hover states. Several elements use scale and shadow transitions, which can increase paint cost and can produce layout/paint work on less capable devices.
+
+Likely impact: medium load/runtime cost; high when combined with the canvas loop.
+
+
+4. DEPENDENCY ANALYSIS
+======================
+
+@web3auth/modal, @web3auth/base, @web3auth/ethereum-provider
+---------------------------------------------------------------
+Largest architectural concern is placement, not merely package size. These are global through Header and should be interaction-triggered or isolated. Crypto/provider transitive dependencies make this a poor candidate for the critical path.
+
+@google/generative-ai
+---------------------
+Used in collect, report, and messages. It is unnecessary on initial render and should be server-side or dynamically imported after an upload/message submit. API keys currently use NEXT_PUBLIC_ names, which exposes them to browsers by design. Moving AI calls server-side also reduces client code and protects the key.
+
+@react-google-maps/api
+----------------------
+Used only by report. It loads Places eagerly and relies on legacy SearchBox. It should be route-local and interaction-deferred, or replaced with a smaller/modern autocomplete integration if the required visual behavior can be preserved.
+
+cobe
+----
+Used only by the home globe. It is a good candidate for dynamic import or a client-only component loaded after the hero is usable. It should be paused/reduced on mobile and hidden/background states.
+
+framer-motion
+-------------
+Used in Home and Header. Audit whether the visual language actually needs the full library. Static CSS transitions plus a small client animation component may preserve the design with less JavaScript. If retained, it must not be imported into every global path unnecessarily.
+
+lucide-react
+------------
+Used broadly for icons. The measured installed directory is large, but named icon imports are normally tree-shakable. Confirm the generated bundle before replacing it. A replacement is lower priority than fixing Web3Auth, data boundaries, and canvas work.
+
+@neondatabase/serverless, drizzle-orm
+-------------------------------------
+These should be server-only. Direct imports from client components create a poor boundary and risk leaking database configuration. Server actions/route handlers can keep the database code out of browser chunks and add caching/authorization.
+
+leaflet
+-------
+Used by components/Map.tsx, which appears disconnected from current routes and references absent Lit/session files. Leaflet CSS is imported globally in app/layout.tsx. If Map is genuinely unused, remove its runtime import path and global CSS in a later cleanup after confirming product requirements.
+
+Radix components
+----------------
+Dropdown, select, switch, label, and slot primitives are reasonable for accessibility and functionality. They are not the primary bottleneck. Keep them unless bundle analysis identifies a concrete issue.
+
+tailwindcss-animate, clsx, tailwind-merge
+------------------------------------------
+Build-time/runtime utility footprint is modest. Tailwind output is likely compact because content globs are scoped to app/components/pages. No evidence suggests CSS is the dominant bottleneck.
+
+viem and ethers
+---------------
+Both appear in the installed dependency tree even though direct package.json dependencies list neither. They likely arrive through Web3/Lit transitive packages. Verify with a bundle analyzer and dependency graph. Reducing unused Web3 features could remove both from browser-facing paths.
+
+
+5. JAVASCRIPT AND CLIENT-SIDE ANALYSIS
+======================================
+
+Initial page likely loaded
+--------------------------
+For a visit to /, the likely critical sequence is:
+1. Server renders the layout shell and static route markup where possible.
+2. The client-only dynamic Header boundary loads and renders its placeholder, then its JavaScript.
+3. Header evaluates Web3Auth, Framer Motion, icons, dropdown primitives, and database helper imports.
+4. Home hydrates and starts Cobe canvas creation.
+5. Home starts three sequential database requests.
+6. Header initializes Web3Auth and then starts user-dependent notification/balance work.
+7. Font requests for Inter and Poppins are processed.
+
+This combines authentication, database access, animation, font work, and hydration in one route before the visitor interacts with a feature.
+
+Client boundary findings
+------------------------
+- Header is intentionally client-only because it owns auth state and browser APIs, but the auth implementation should be loaded only when needed.
+- Home needs a small interactive globe and animated buttons, but the entire page is client-side. Static hero text and feature cards can remain server-rendered.
+- Report needs client state for forms/maps/uploads, but report history and static shell can be server-rendered or split.
+- Collect needs client state for search, pagination, modal, upload, and verification, but its shell and possibly initial task data can be server-rendered.
+- Leaderboard and rewards use client effects for data that could be fetched on the server and passed to a small interactive client region.
+- Calculator, settings, and verify are interactive but could use smaller client islands around forms/results rather than route-wide client rendering.
+
+Re-render concerns
+------------------
+- Home impactData state updates once, but the whole Home component owns the globe and all page markup, so the update can rerender the page subtree. Consider isolating the globe and impact data.
+- Globe onRender depends on r, so pointer movement can cause callback recreation and effect teardown/recreation because the effect depends on onRender. This can destroy/recreate the Cobe instance after interaction state changes.
+- Globe calls setR on pointer movement, which can generate frequent React state updates during dragging. Store transient pointer rotation in refs where possible.
+- Header userInfo is logged during every render in the historical runtime log. Development-only logs should not run on every render.
+- Collect filters and slices in render. This is cheap for the current page size but should be paired with server pagination as data grows.
+- Leaderboard renders every fetched row in a table with no server limit or virtualization.
+- Messages appends all messages to the DOM and has no virtualization or history limit. Long sessions will increase layout, paint, and reconciliation costs.
+- useMediaQuery uses deprecated addListener/removeListener and includes matches in its effect dependency list, causing listener setup/cleanup on each state change. It is low impact but should use stable matchMedia subscriptions.
+
+Data fetching concerns
+----------------------
+- Home calls independent reads sequentially rather than Promise.all or a server aggregate query.
+- Header has two effects that each call getUserByEmail, producing duplicate lookup work.
+- Rewards fetches transactions and rewards sequentially and re-fetches after redemption.
+- Leaderboard fetches all rankings, then separately fetches the current user.
+- Report fetches recent reports after mount, then prepends local state after submission.
+- Collect fetches all collection tasks and paginates only in memory.
+- getPendingReports can return an unbounded result when no limit is passed.
+- getLeaderboardRewards has no limit, cursor, or pagination.
+- Database actions often return complete table rows rather than selecting only the fields needed by the UI.
+
+
+6. IMAGES, FONTS, AND ASSETS
+============================
+
+Inventory
+---------
+Public assets include 1.png, 2.png, 3.png, 4.png, 5.png, grid.jpg, next.svg, vercel.svg, and w.png. Local fonts include app/fonts/GeistMonoVF.woff and app/fonts/GeistVF.woff.
+
+Images
+------
+- Header uses /w.png with next/image. In the historical log it generated an LCP warning because it lacked priority; the inspected current file includes priority.
+- Report, collect, and verify use plain <img> for user-uploaded data URLs. This is appropriate for previews in principle, but previews have no explicit dimensions, so layout can shift as files decode. Large uploads remain in memory.
+- No evidence of responsive srcsets, explicit upload-size validation, client resizing, compression, or object-storage URLs.
+- The public asset names do not communicate dimensions or format quality. A production asset pass should measure actual pixel dimensions and bytes and convert photographic/large PNG assets to AVIF/WebP where appropriate.
+- The logo is only 60x60 in code, but verify intrinsic dimensions and whether the source file is oversized.
+
+Fonts
+------
+- Inter is loaded globally from next/font/google in app/layout.tsx.
+- Poppins loads separately on the home page with weights 300, 400, and 600.
+- Geist WOFF files exist locally but are unused.
+- Loading two font families and multiple Poppins weights increases font requests and font selection work. Standardize on one family or reserve the second family for a clearly justified visual role, and ship only used weights.
+- Use next/font local for committed fonts if the design requires local assets, or keep one optimized next/font family. Do not load unused Geist files.
+
+CSS and Tailwind
+----------------
+- Tailwind content paths are scoped to app, components, and pages.
+- globals.css is small and mostly theme variables/base rules. There is no evidence of CSS being the main bottleneck.
+- Leaflet CSS is globally imported despite Map.tsx appearing inactive, creating avoidable global CSS and dependency coupling.
+- Many components use shadows, rounded surfaces, hover scale, and transitions. These preserve visual quality but should be profiled on low-end devices; box-shadow and large scale changes can increase paint cost.
+
+
+7. ANIMATIONS, WEBGL, AND VISUAL EFFECTS
+=========================================
+
+Cobe globe
+----------
+The globe is the dominant continuous runtime workload. GLOBE_CONFIG sets mapSamples to 4000, canvas dimensions to 600x600, devicePixelRatio to 1, and the rendered wrapper to up to 700px. The render callback rotates the globe by 0.0025 per frame.
+
+Recommended preservation-friendly changes:
+- Dynamically load the globe after the hero text/buttons are available.
+- Use IntersectionObserver to start it only when visible.
+- Pause on document.visibilityState hidden.
+- Respect prefers-reduced-motion and provide a still frame or very low-rate rotation.
+- Use lower mapSamples/device settings on small screens.
+- Avoid recreating Cobe when pointer rotation changes; use refs for transient values.
+- Consider a static pre-rendered frame for low-power/reduced-motion users while preserving the same visual identity.
+
+Framer Motion
+-------------
+Home has multiple entrance animations, whileInView cards, hover scale, spring transitions, and AnimatePresence. Header animates its entrance and nav hover. The number of effects is not inherently excessive, but the combination with a live canvas and global header adds work.
+
+Recommended preservation-friendly changes:
+- Keep only hero entrance and one meaningful card reveal.
+- Replace simple hover/opacity/transform effects with CSS transitions where possible.
+- Disable or simplify animation under prefers-reduced-motion.
+- Avoid simultaneous scale plus shadow animations on many cards.
+- Load the animation-heavy home component only on home.
+
+Chat iframe
+-----------
+ChatSection contains an external GPT Trainer iframe, but the invocation is commented out in the inspected home file. If re-enabled, it must remain click-to-load. An iframe should never be created on initial load for a feature hidden behind a button.
+
+Leaflet map
+-----------
+Map.tsx would add tile requests, Leaflet runtime, markers, popups, and ContractInteraction/Lit work if activated. It is currently not found in the active route structure, but the global Leaflet CSS import still creates coupling.
+
+
+8. THIRD-PARTY SERVICES ANALYSIS
+================================
+
+Web3Auth and RPC
+-----------------
+Global initialization is too early. The historical log shows repeated 401 failures from the Ankr Sepolia endpoint and popup COOP warnings. These failures can consume startup time and produce noisy errors. Auth should initialize on login intent or after the main page is interactive. RPC configuration should be environment-controlled, validated, and supported by a reliable provider. Testnet should not initialize automatically in production.
+
+Google Gemini
+-------------
+Calls occur directly from the browser and API keys use public environment names. This increases client code and exposes credentials. Calls should move to a server route/server action, with file-size/type validation, timeouts, rate limits, and response schema validation. The Gemini SDK should be dynamically loaded or server-only. The historical model 404 is also a reliability signal: model IDs should be configurable and validated.
+
+Google Maps Places
+------------------
+The report page eagerly loads Places and uses StandaloneSearchBox/SearchBox, which emitted a deprecation/availability warning. Migrate to the supported API and defer loading until focus/click. Provide a plain text location field as the immediate usable state.
+
+GPT Trainer
+-----------
+The iframe is hidden/commented in current code. If used later, click-to-load it and use a placeholder to avoid third-party network and script cost on the landing page.
+
+OpenStreetMap/Leaflet
+---------------------
+Map tiles are external requests and can be numerous during pan/zoom. Keep them route-local and lazy. Do not import Leaflet globally if no current route uses it.
+
+Browser extensions
+------------------
+The bis_skin_checked attribute warning and message-channel warnings are likely extension/browser tooling noise. suppressHydrationWarning can hide warnings at a boundary, but it does not remove the external injection. Validate in a clean browser profile before treating those as application regressions.
+
+
+9. NETWORK AND LOADING ANALYSIS
+===============================
+
+Render-blocking and early work
+------------------------------
+- The global client-only Header delays the header UI behind JavaScript and runs auth initialization.
+- Home begins data fetching only after hydration, so impact metrics appear after client execution and database round trips.
+- Home runs three independent reads sequentially.
+- Report loads Maps Places during route initialization.
+- Auth and third-party libraries are initialized before user intent.
+- Font loading involves Inter globally and Poppins on home.
+
+Request duplication and growth
+------------------------------
+- Header does separate user lookups for notifications and balance.
+- Rewards and balance paths can read overlapping transaction data.
+- Collection loads all tasks and paginates locally.
+- Leaderboard loads all rewards and renders all rows.
+- Report loads a recent report list without an explicit user-focused limit beyond the helper default.
+- Polling notifications every 30 seconds is acceptable only if the user is authenticated and the tab is visible; it should pause in hidden tabs and use a single consolidated user summary query.
+
+Database scalability
+--------------------
+The migration inspected contains no secondary indexes. Candidate indexes include reports(created_at), reports(status), reports(user_id), reports(collector_id), rewards(user_id), rewards(points), transactions(user_id, date), notifications(user_id, is_read), and collected_wastes(collector_id). Exact index selection should be validated with query plans and real cardinality.
+
+Pagination/selection
+--------------------
+- Add server-side limits/cursors for leaderboard, reports, and collection tasks.
+- Select only columns required by each screen.
+- Aggregate home impact numbers in one database query or server action rather than downloading up to 100 rows from three tables and reducing in the browser.
+- Add request cancellation/timeout behavior for route fetches and AI calls.
+
+
+10. TOP PERFORMANCE PROBLEMS RANKED BY SEVERITY
+===============================================
+
+CRITICAL
+--------
+1. Database code and DATABASE_URL cross the client boundary.
+   Expensive aspect: Drizzle/Neon and database actions are imported by client files; next.config.mjs exposes DATABASE_URL through env configuration.
+   Location: next.config.mjs, utils/db/action.ts, utils/db/dbConfig.jsx, client pages.
+   Impact: possible credential exposure, larger client graph, no server cache, more latency.
+   Optimization: move all database access to server actions/route handlers/server components; remove DATABASE_URL from public/static env configuration.
+   Risk: requires API/auth contract changes; must preserve authorization and existing UI behavior.
+
+2. Global Web3Auth initialization on every route.
+   Expensive aspect: auth/provider packages and initialization are in the shared shell.
+   Location: components/Header.tsx, app/layout.tsx.
+   Impact: large shared payload, startup network work, RPC failures, login delay.
+   Optimization: load auth module only on login interaction or after idle; isolate wallet UI.
+   Risk: login timing/state synchronization must be tested.
+
+HIGH
+----
+3. Always-running Cobe globe at home.
+   Location: app/page.tsx Globe.
+   Impact: persistent CPU/GPU/battery use and contention with hydration.
+   Optimization: lazy-load, pause offscreen/hidden, reduce samples on mobile, respect reduced motion.
+   Risk: animation timing/visual behavior needs regression checks.
+
+4. Sequential and duplicated data fetching.
+   Location: app/page.tsx, components/Header.tsx, rewards, leaderboard, utils/db/action.ts.
+   Impact: slower meaningful data, database cost, unnecessary rerenders.
+   Optimization: aggregate/server-fetch, parallelize independent requests, consolidate user summary, cache/dedupe.
+   Risk: stale data semantics must be specified.
+
+5. Eager Google Places on /report and legacy SearchBox.
+   Location: app/report/page.tsx.
+   Impact: third-party script cost and reliability warning.
+   Optimization: interaction-triggered loading and supported autocomplete API.
+   Risk: autocomplete behavior/API migration work.
+
+6. Client Gemini SDK and base64 image pipeline.
+   Location: collect, report, messages.
+   Impact: route weight, memory, 33%+ payload inflation, long interaction latency.
+   Optimization: server-side AI endpoint; resize/compress/upload; store URL; dynamic import only as fallback.
+   Risk: backend and upload lifecycle changes.
+
+7. Route-wide client components.
+   Location: most app/page.tsx files.
+   Impact: hydration and browser JavaScript for static content.
+   Optimization: server route shells plus small client islands.
+   Risk: browser-only state must be isolated carefully.
+
+MEDIUM
+------
+8. Unbounded data and in-memory pagination.
+   Location: getLeaderboardRewards, getPendingReports, getWasteCollectionTasks consumers.
+   Impact: growth-related query/DOM/memory cost.
+   Optimization: server pagination, limits, indexes, virtualization if necessary.
+   Risk: pagination UX/API changes.
+
+9. Two font families and unused local Geist fonts.
+   Location: app/layout.tsx, app/page.tsx, app/fonts.
+   Impact: additional font requests/processing and unused assets.
+   Optimization: one family and only used weights.
+   Risk: typography may shift; compare screenshots.
+
+10. Repeated Framer Motion and paint-heavy effects.
+    Location: app/page.tsx, components/Header.tsx.
+    Impact: moderate JS and paint overhead, especially on low-end devices.
+    Optimization: CSS for simple transitions, fewer simultaneous effects, reduced-motion mode.
+    Risk: subtle visual differences.
+
+11. Base64 previews without dimensions/resizing.
+    Location: report, collect, verify.
+    Impact: memory/layout shifts and expensive copies.
+    Optimization: object URLs for preview, explicit dimensions, client worker resize.
+    Risk: preview lifecycle/revocation handling.
+
+12. Global Leaflet CSS and inactive map/Web3 code.
+    Location: app/layout.tsx, components/Map.tsx, ContractInteraction.tsx.
+    Impact: unnecessary coupling and potential future accidental inclusion.
+    Optimization: verify product requirement, route-local dynamic import, remove only confirmed dead code.
+    Risk: hidden feature could be relied on.
+
+LOW
+----
+13. Deprecated matchMedia addListener API.
+    Location: hooks/useMediaQuery.ts.
+    Impact: small modern-browser maintenance issue.
+    Optimization: use addEventListener("change") with stable effect.
+    Risk: very low.
+
+14. Development console logging and historical hydration warning noise.
+    Location: Header/messages/settings and consoleErrors.txt.
+    Impact: diagnostics noise and minor development overhead.
+    Optimization: remove render logs; validate clean browser profile.
+    Risk: none if no operational logging requirement.
+
+15. Small icon/render micro-optimizations.
+    Location: many pages.
+    Impact: low compared with architectural issues.
+    Optimization: only after bundle analysis; preserve named imports and accessibility.
+    Risk: unnecessary visual/API churn.
+
+
+11. TOP 10 HIGHEST-IMPACT OPTIMIZATIONS
+=======================================
+
+1. Establish a secure server boundary for all database access.
+   Move Drizzle/Neon actions behind server actions or route handlers, remove DATABASE_URL from next.config.mjs env, authenticate/authorize on the server, and pass only screen-specific data to client islands.
+
+2. Make Web3Auth intent-driven.
+   Keep a lightweight login button in the global shell. Dynamically import Web3Auth and provider packages on login, or load them after the main content is interactive. Stop auth/RPC work for anonymous visitors and unrelated routes.
+
+3. Defer, pause, and adapt the home globe.
+   Dynamically import Cobe, initialize after hero content, use visibility/IntersectionObserver pause behavior, reduce samples on mobile, and respect reduced motion. Preserve the same globe design for capable devices.
+
+4. Replace home’s three browser requests with one server-side impact summary.
+   Aggregate counts/sums in SQL, run independent work concurrently where aggregation is not possible, select only required fields, and cache/revalidate the result.
+
+5. Move Gemini calls server-side and optimize uploads.
+   Send validated files to a server endpoint, resize/compress before AI processing, enforce size/type limits, and store object-storage URLs rather than base64 text in database rows. Load AI functionality only after submit/upload.
+
+6. Split route shells from interactive islands.
+   Convert static headings, feature sections, tables’ static structure, and server-fetchable data to server components. Keep only form state, modals, map autocomplete, and verification controls client-side.
+
+7. Replace eager Google Places loading.
+   Use a plain input immediately, load the Maps library on focus or explicit autocomplete intent, and migrate from SearchBox to the supported API.
+
+8. Add database indexes, limits, and pagination.
+   Index actual filter/order columns, add server-side cursor pagination, cap leaderboard/task/report responses, and avoid rendering unbounded arrays.
+
+9. Reduce visual runtime work without changing the visual system.
+   Keep key entrance motion, replace simple motion wrappers with CSS transitions, reduce hover scale/shadow combinations, and create a reduced-motion/low-power path.
+
+10. Standardize fonts and create measurement gates.
+    Choose one font family/required weights, remove unused font assets from the loaded path, add bundle analyzer/Lighthouse/Web Vitals tooling, and establish route budgets before further refactors.
+
+
+12. RECOMMENDED OPTIMIZATION STRATEGY
+=====================================
+
+Phase 0: Baseline and safety
+----------------------------
+- Capture Lighthouse mobile/desktop for /, /report, /collect, /leaderboard, and /rewards in a clean browser profile.
+- Record FCP, LCP, CLS, INP/TBT, transferred bytes, request count, long tasks, memory, and home canvas frame rate.
+- Add @next/bundle-analyzer or equivalent temporarily and inspect client chunks by route.
+- Record database query timings and row counts in development/staging.
+- Confirm the current product requirement for inactive Map/Lit features before deleting or isolating them.
+
+Phase 1: Secure and remove critical-path work
+----------------------------------------------
+- Move database and Gemini calls server-side.
+- Remove database secrets from public/static Next configuration.
+- Load Web3Auth only on user intent.
+- Remove global Leaflet CSS if the active route inventory confirms it is unused.
+- Keep visual placeholders so the design does not jump while deferred features load.
+
+Phase 2: Fix request and payload shape
+--------------------------------------
+- Build server-side summary queries for home and dashboard views.
+- Parallelize independent reads and consolidate repeated user lookups.
+- Add indexes and server pagination.
+- Replace base64 persistence with compressed uploads and URLs.
+- Add AbortController/timeouts and clear loading/error states.
+
+Phase 3: Split client boundaries
+--------------------------------
+- Convert route shells to server components.
+- Extract small client islands for forms, dropdowns, uploads, modals, and interactions.
+- Keep initial HTML useful without JavaScript where possible.
+- Dynamically import route-specific heavy components such as maps, AI verification, and auth.
+
+Phase 4: Visual runtime optimization
+------------------------------------
+- Defer and pause Cobe.
+- Profile Framer Motion and replace simple effects with CSS.
+- Add reduced-motion and low-power behavior.
+- Set explicit image dimensions and optimize all public media.
+- Standardize font loading.
+
+Phase 5: Verify and prevent regression
+--------------------------------------
+- Repeat the same Lighthouse and browser traces.
+- Compare screenshots and interaction flows for visual/functionality parity.
+- Add bundle size, route First Load JS, LCP, and long-task budgets to CI.
+- Test anonymous, authenticated, failed-auth, failed-AI, slow-network, mobile, hidden-tab, and reduced-motion scenarios.
+
+
+13. POTENTIAL RISKS AND REGRESSIONS
+===================================
+
+- Moving database calls server-side can accidentally change authorization behavior or break anonymous flows. Preserve existing anonymous report/task behavior explicitly.
+- Lazy Web3Auth can create a race between login UI and client initialization. Use a single state machine and test refresh/reconnect/logout.
+- Changing RPC providers can affect chain compatibility, gas estimation, and transaction behavior. Validate chain ID and provider methods.
+- Gemini server calls require multipart/body limits, file validation, timeouts, and safe error handling. Do not expose API keys in browser code.
+- Image compression can reduce AI accuracy or alter preview appearance. Preserve a reasonable source quality and compare verification outcomes.
+- Moving route data fetching to server components can change when data becomes stale. Choose explicit revalidation and refresh behavior.
+- Google Maps API migration can alter autocomplete results and billing behavior. Keep a normal text input fallback.
+- Reducing globe samples or animation rate can change visual fidelity. Use device-aware tiers and preserve the current high-quality path on capable screens.
+- Removing Framer Motion effects can cause subtle design regressions. Replace only simple effects first and compare visual snapshots.
+- Removing Map/Lit code without product confirmation could remove an undiscovered feature. Treat it as dead-code cleanup only after confirmation.
+- Adding indexes improves reads but has write/storage cost. Validate with query plans and actual workload.
+- Suppressing hydration warnings does not fix extension injection. Validate in a clean profile and avoid hiding application mismatches broadly.
+
+
+14. BASELINE MEASUREMENTS
+=========================
+
+Measured in this audit
+----------------------
+- Framework build: Next.js 14.2.16.
+- Production build: passed; 13 static pages generated.
+- Shared First Load JS: 87.6 kB.
+- Largest First Load JS routes: / 349 kB; /report 345 kB; /collect 313 kB; /rewards 306 kB; /leaderboard 297 kB.
+- Smallest relevant route payloads: /messages 95.8 kB; /settings 97.9 kB; /calculator 125 kB; /verify 98.1 kB.
+- .next/static aggregate measured: approximately 825,493 bytes.
+- Cobe mapSamples: 4,000.
+- Cobe configured canvas dimensions: 600x600; wrapper max width: 700px.
+- Home database reads: 3 independent reads, currently sequential.
+- Header notification polling: every 30 seconds.
+- Public dependencies in package.json: 20 runtime dependencies were listed, plus development dependencies; major performance-sensitive groups are Web3Auth, Gemini, Maps, Cobe, Framer Motion, Leaflet, Drizzle/Neon, and toast/Radix UI.
+- No secondary indexes were found in the inspected Drizzle migration.
+- Asset inventory: 9 public files and 2 local WOFF files.
+- Runtime log: Web3Auth RPC 401, Gemini model 404, Google Places SearchBox warning, COOP popup warnings, hydration/extension warning, and historical LCP image warning.
+
+Not available and therefore intentionally omitted
+--------------------------------------------------
+- Lighthouse scores and Core Web Vitals.
+- Browser request count/waterfall.
+- Gzip/Brotli transfer sizes per route.
+- Exact image dimensions/bytes.
+- Real database latency, query plans, table cardinalities.
+- Main-thread long-task durations and canvas FPS.
+
+
+15. RECOMMENDED ORDER OF IMPLEMENTATION
+=======================================
+
+1. Add a repeatable performance baseline and bundle analyzer.
+2. Secure and server-isolate database access; remove DATABASE_URL from exposed Next env configuration.
+3. Consolidate/parallelize data fetching and add limits/indexes.
+4. Make Web3Auth lazy and remove it from anonymous initial startup.
+5. Move Gemini processing server-side and redesign image transport/storage.
+6. Defer Google Maps and migrate away from legacy SearchBox.
+7. Split server-renderable route shells from client islands.
+8. Defer/pause Cobe and optimize its device/reduced-motion tiers.
+9. Reduce Framer Motion usage where CSS preserves the same appearance.
+10. Standardize fonts and optimize images/previews.
+11. Isolate or remove confirmed-unused Leaflet/Lit code and CSS.
+12. Re-run functional, visual, accessibility, and performance tests on all routes.
+13. Add CI budgets and regression monitoring.
+
+
+OPTIMIZATION BRIEF FOR ANOTHER AI
+=================================
+
+This is a Next.js 14.2.16 App Router waste-management site with React 18 and TypeScript. The production build passes, but the architecture is client-heavy. First Load JS measured by Next is 349 kB for home, 345 kB for report, 313 kB for collect, 306 kB for rewards, 297 kB for leaderboard, and 87.6 kB shared. The .next/static aggregate measured about 825,493 bytes. No Lighthouse or browser trace was available, so Core Web Vitals and exact transfer costs are unknown.
+
+The dominant performance problems are architectural:
+1. Most routes are marked use client. Static page content is hydrated unnecessarily.
+2. Client routes directly import utils/db/action.ts and utils/db/dbConfig.jsx. next.config.mjs exposes DATABASE_URL through env configuration. Move all database work to server actions/route handlers/server components and remove the exposed secret.
+3. Header is globally client-only and imports Web3Auth modal/base/Ethereum provider. It calls initModal() on every route and causes RPC/auth work even for anonymous visitors. Runtime log shows repeated 401 failures from the configured Ankr Sepolia RPC and popup COOP warnings. Dynamically load Web3Auth on login intent or after idle, and validate network/provider configuration.
+4. Home app/page.tsx starts a Cobe globe with mapSamples 4000, a 600x600 canvas, up to 700px display width, and a continuous render loop. It is not paused when hidden/offscreen and should be deferred, visibility-paused, reduced on mobile, and disabled/simplified for reduced motion. Avoid recreating the Cobe instance when pointer state changes.
+5. Home fetches recent reports, all rewards, and collection tasks sequentially after hydration. Replace with one server-side aggregate query or parallel cached reads. Header also duplicates user lookups for notifications and balance; rewards/balance duplicate transaction work.
+6. Report eagerly loads Google Maps Places and uses legacy StandaloneSearchBox/SearchBox. Runtime log warns SearchBox is unavailable to new customers. Load autocomplete only on interaction, migrate to a supported API, and preserve a plain-input fallback.
+7. collect, report, and messages import @google/generative-ai client-side. Report/collect read files as base64 data URLs, retain them in React state, send base64 to Gemini, and report persists preview data through createReport. Base64 adds roughly 33% overhead and increases memory. Move AI behind a server endpoint, resize/compress uploads, use object storage URLs, validate file size/type, and dynamically load only after submit.
+8. Database lists are not consistently bounded: leaderboard has no limit, collection paginates in memory, and task/report queries can return large results. Add indexes and cursor/server pagination; select only needed columns.
+9. Home/Header use Framer Motion for many entrance, hover, spring, scale, and shadow effects. Keep key visual effects but replace simple transitions with CSS, reduce simultaneous effects, and support prefers-reduced-motion.
+10. Inter loads globally and Poppins loads on home in three weights. Local Geist fonts are unused. Standardize on one family and ship only required weights.
+11. Leaflet CSS is globally imported even though components/Map.tsx appears inactive and references missing Lit/session modules. Confirm product requirements, then route-localize or remove only verified dead code.
+12. Images use public PNG/JPG assets and plain img for base64 previews. Measure dimensions/bytes, optimize formats, add explicit dimensions, and use object URLs for previews rather than retaining base64 strings.
+
+Preserve the existing visual design and functionality. Implement in this order: baseline/bundle analysis; secure server boundaries; data query consolidation/indexes/pagination; lazy Web3Auth; server-side Gemini and upload pipeline; deferred Google Maps; server-rendered route shells/client islands; deferred/pause-aware globe; animation/font/image cleanup; then rerun functional, visual, accessibility, Lighthouse, network, and low-end-device tests. Distinguish actual measured results from estimates and do not claim Core Web Vital improvements without a browser measurement.

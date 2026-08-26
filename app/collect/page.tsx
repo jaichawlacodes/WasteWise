@@ -47,7 +47,7 @@ export default function CollectPage() {
           setUser(null)
         }
 
-        const fetchedTasks = await getWasteCollectionTasks()
+        const fetchedTasks = await getWasteCollectionTasks(100)
         setTasks(fetchedTasks.map((task) => ({
           id: task.id,
           location: task.location ?? 'Unknown location',
@@ -118,11 +118,16 @@ export default function CollectPage() {
       return
     }
 
+    if (!geminiApiKey) {
+      toast.error('Gemini API key is not configured.')
+      return
+    }
+
     setVerificationStatus('verifying')
 
     try {
       const genAI = new GoogleGenerativeAI(geminiApiKey!)
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" })
+      const model = genAI.getGenerativeModel({ model: process.env.NEXT_PUBLIC_GEMINI_MODEL ?? 'gemini-3.6-flash' })
 
       const base64Data = readFileAsBase64(verificationImage)
 
