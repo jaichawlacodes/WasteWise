@@ -1,0 +1,105 @@
+WASTIFY PHASE 0 PERFORMANCE BASELINE
+=====================================
+
+Date: 2026-08-27
+Phase: 0 only, baseline establishment
+Status: Measurement complete. No Phase 1+ implementation performed.
+
+Repository state
+----------------
+- HEAD at start of Phase 0: d9e9679 (idk)
+- The worktree was already dirty before this phase. Existing modified files include app/collect/page.tsx, app/layout.tsx, app/messages/page.tsx, app/page.tsx, app/report/page.tsx, app/settings/page.tsx, components/Header.tsx, and package-lock.json. Existing untracked files include PERFORMANCE_AUDIT_REPORT.txt and consoleErrors.txt.
+- This phase added only this baseline record. No application source, dependency, or configuration files were changed during Phase 0.
+
+Commands run
+------------
+- npm run build: passed.
+- npm run lint: exited successfully with warnings.
+- Generated .next output was inspected directly.
+- PowerShell content search was used because rg is not installed in the environment.
+- No Lighthouse, Playwright performance trace, browser profiler, or bundle-analyzer package was available/configured. No such dependency was added because generated Next chunk inspection provided a concrete baseline without changing application behavior.
+
+Production build output
+-----------------------
+Next.js 14.2.16 reported:
+
+Route             Route size     First Load JS
+/                 8.81 kB        349 kB
+/_not-found       876 B          88.5 kB
+/calculator       10.7 kB         125 kB
+/collect          8.51 kB        313 kB
+/leaderboard      5.06 kB        297 kB
+/messages         2.54 kB         95.8 kB
+/report          40.3 kB         345 kB
+/rewards          3.71 kB        306 kB
+/settings         3.08 kB         97.9 kB
+/verify           3.3 kB          98.1 kB
+
+Shared First Load JS: 87.6 kB.
+
+The build generated 13 static pages. The .next/static directory aggregate measured 3,232,578 bytes in this current environment. This includes generated static files and should not be treated as one transfer or as compressed network size.
+
+Largest generated client chunks
+-------------------------------
+Chunk                                      Raw bytes
+614-2c5ddc23915cd69d.js                     825,493
+44-b4ce6d920d974244.js                     347,715
+aaea2bcf-070c134f74d132a0.js               325,086
+fd9d1056-33dbbf1723128ec3.js               172,833
+4e6af11a-32dd007ec0dcabc0.js               150,369
+framework-00a8ba1a63cfdc9e.js              140,000
+159-f087e8dfecb7ea84.js                     132,178
+117-135cc43d1660fcc3.js                     123,885
+polyfills-42372ed130431b0a.js               112,594
+main-2d7d7e9ca2ee3a35.js                    111,494
+423-62b64cb89af7473a.js                      53,876
+
+Generated chunk dependency evidence
+------------------------------------
+PowerShell string search found these signatures in the generated browser chunks:
+- 614-2c5ddc23915cd69d.js: Web3Auth; 825,493 raw bytes.
+- 44-b4ce6d920d974244.js: Drizzle and Neon; 347,715 raw bytes.
+- 4e6af11a-32dd007ec0dcabc0.js: react-google-maps; 150,369 raw bytes.
+- 548-f72f093cf4408c58.js: GoogleGenerativeAI and generativelanguage; 18,535 raw bytes.
+- Several route chunks also contain Neon signatures, confirming database code is crossing route/client boundaries.
+
+This search is signature evidence, not an exact module-size attribution. Minification, shared chunks, and transitive modules mean a dependency may be present in a shared chunk and serve multiple routes.
+
+Lint baseline
+-------------
+Lint passed with warnings. Warnings include:
+- <img> usage in collect, report, and verify.
+- Unused variables/imports in multiple files.
+- @ts-nocheck in Header, Map, and ContractInteraction.
+- Globe hook warning about phi mutation and useCallback dependencies.
+- A currently unused GEMINI_MODEL constant in Header.
+- Deprecated/legacy code concerns in inactive map/Web3 components.
+
+Architecture findings confirmed by current source
+--------------------------------------------------
+- Client routes directly import utils/db/action.ts; that imports Drizzle and Neon through utils/db/dbConfig.jsx.
+- next.config.mjs includes DATABASE_URL in its env object.
+- Header is globally dynamically loaded with ssr: false and imports/constructs Web3Auth.
+- app/page.tsx imports Cobe and Framer Motion and creates a continuous globe loop with mapSamples: 4000.
+- app/page.tsx performs three independent database requests sequentially after hydration.
+- app/report/page.tsx eagerly calls useJsApiLoader with the Places library and uses StandaloneSearchBox.
+- collect, report, and messages import @google/generative-ai client-side.
+- collect/report/verify retain uploaded image previews as data URLs/base64 strings.
+- Leaflet CSS is imported globally from app/layout.tsx while components/Map.tsx is not connected to an active route in the inspected tree.
+
+Runtime baseline available from consoleErrors.txt
+--------------------------------------------------
+The existing runtime log contains Web3Auth RPC 401 failures, a Gemini model 404, Google Maps SearchBox deprecation/availability warnings, popup Cross-Origin-Opener-Policy warnings, an extra server hydration attribute warning, browser-extension message-channel warnings, and a historical Next Image LCP warning.
+
+Not measured
+------------
+- Lighthouse performance score.
+- FCP, LCP, CLS, INP, TBT, frame rate, memory, and long tasks.
+- Request count, network waterfall, compressed transfer size, and database latency.
+- Exact public image dimensions and bytes.
+
+Phase 0 decision
+----------------
+The current build is reproducible and the generated chunks provide sufficient evidence to begin architectural optimization. The largest verified opportunities are server-isolating database/Gemini work, removing Web3Auth from the initial path, deferring Maps, splitting client boundaries, and pausing/defer-loading the home globe.
+
+Do not interpret this baseline as proof of a particular Core Web Vital or a guaranteed percentage improvement. Every later phase must rerun npm run build and compare the route/chunk data above, plus browser measurements if tooling becomes available.

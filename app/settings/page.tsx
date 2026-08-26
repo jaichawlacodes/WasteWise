@@ -30,8 +30,6 @@ export default function SettingsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // Here you would typically send the updated settings to your backend
-    console.log('Updated settings:', settings)
     alert('Settings updated successfully!')
   }
 

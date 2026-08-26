@@ -39,12 +39,13 @@ export default function RewardsPage() {
             setUser(fetchedUser)
             const fetchedTransactions = await getRewardTransactions(fetchedUser.id)
             setTransactions(fetchedTransactions as Transaction[])
-            const fetchedRewards = await getAvailableRewards(fetchedUser.id)
-            setRewards(fetchedRewards.filter(r => r.cost > 0)) // Filter out rewards with 0 points
             const calculatedBalance = fetchedTransactions.reduce((acc, transaction) => {
               return transaction.type.startsWith('earned') ? acc + transaction.amount : acc - transaction.amount
             }, 0)
-            setBalance(Math.max(calculatedBalance, 0)) // Ensure balance is never negative
+            const normalizedBalance = Math.max(calculatedBalance, 0)
+            setBalance(normalizedBalance)
+            const fetchedRewards = await getAvailableRewards(fetchedUser.id, normalizedBalance)
+            setRewards(fetchedRewards.filter(r => r.cost > 0))
           } else {
             toast.error('User not found. Please log in again.')
           }

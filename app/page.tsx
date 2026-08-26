@@ -75,16 +75,16 @@ const ChatSection = () => {
 };
 
 const GLOBE_CONFIG = {
-  width: 800,
-  height: 800,
+  width: 600,
+  height: 600,
   onRender: () => {},
-  devicePixelRatio: 2,
+  devicePixelRatio: 1,
   phi: 0,
   theta: 0.3,
   dark: 0,
   diffuse: 0.4,
-  mapSamples: 16000,
-  mapBrightness: 1.2,
+  mapSamples: 4000,
+  mapBrightness: 1.1,
   baseColor: [1, 1, 1] as [number, number, number],
   markerColor: [251 / 255, 100 / 255, 21 / 255] as [number, number, number],
   glowColor: [1, 1, 1] as [number, number, number],
@@ -132,10 +132,10 @@ function Globe({ className, config = GLOBE_CONFIG }: GlobeProps) {
 
   const onRender = useCallback(
     (state: Record<string, any>) => {
-      if (!pointerInteracting.current) phi += 0.005;
+      if (!pointerInteracting.current) phi += 0.0025;
       state.phi = phi + r;
-      state.width = width.current * 2;
-      state.height = width.current * 2;
+      state.width = width.current;
+      state.height = width.current;
     },
     [r]
   );
@@ -155,8 +155,8 @@ function Globe({ className, config = GLOBE_CONFIG }: GlobeProps) {
 
     const globe = createGlobe(canvas, {
       ...config,
-      width: width.current * 2,
-      height: width.current * 2,
+      width: width.current,
+      height: width.current,
       onRender,
     });
 
@@ -209,9 +209,11 @@ export default function Home() {
   useEffect(() => {
     async function fetchImpactData() {
       try {
-        const reports = await getRecentReports(100);
-        const rewards = await getAllRewards();
-        const tasks = await getWasteCollectionTasks(100);
+        const [reports, rewards, tasks] = await Promise.all([
+          getRecentReports(100),
+          getAllRewards(),
+          getWasteCollectionTasks(100),
+        ]);
 
         const wasteCollected = tasks.reduce((total, task) => {
           const match = task.amount?.match(/(\d+(\.\d+)?)/);

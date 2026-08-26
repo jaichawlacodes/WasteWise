@@ -13,56 +13,79 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
-import { Web3Auth } from "@web3auth/modal"
-import { CHAIN_NAMESPACES, IProvider, WEB3AUTH_NETWORK } from "@web3auth/base"
-import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
-import { createUser, getUnreadNotifications, markNotificationAsRead, getUserByEmail, getUserBalance } from "@/utils/db/action"
+import { createUser, getHeaderData, markNotificationAsRead } from "@/utils/db/action"
 import Image from "next/image"
 
-const clientId = process.env.WEB3_AUTH_CLIENT_ID;
+const clientId = process.env.WEB3_AUTH_CLIENT_ID ?? "";
 
-const chainConfig = {
-  chainNamespace: CHAIN_NAMESPACES.EIP155,
-  chainId: "0xaa36a7", // Sepolia testnet
-  rpcTarget: "https://rpc.ankr.com/eth_sepolia/b9cb2351a1335826351c8d81326df80584fc65b94dce69ac4fb8ed3eb0708f82", // FIXED
-  displayName: "Ethereum Sepolia Testnet",
-  blockExplorerUrl: "https://sepolia.etherscan.io",
-  ticker: "ETH",
-  tickerName: "Ethereum",
-  logo: "https://cryptologos.cc/logos/ethereum-eth-logo.png",
-};
+let web3auth: any = null;
+let web3AuthLoadPromise: Promise<any> | null = null;
 
-const privateKeyProvider = new EthereumPrivateKeyProvider({
-  config: { chainConfig },
-});
+async function loadWeb3Auth() {
+  if (web3auth) return web3auth;
+  if (!clientId) return null;
+  if (web3AuthLoadPromise) return web3AuthLoadPromise;
 
-const web3auth = new Web3Auth({
-  clientId,
-  web3AuthNetwork: WEB3AUTH_NETWORK.TESTNET,
-  privateKeyProvider,
-});
+  web3AuthLoadPromise = Promise.all([
+    import("@web3auth/modal"),
+    import("@web3auth/base"),
+    import("@web3auth/ethereum-provider"),
+  ]).then(([modal, base, ethereum]) => {
+    const chainConfig = {
+      chainNamespace: base.CHAIN_NAMESPACES.EIP155,
+      chainId: "0xaa36a7",
+      rpcTarget: "https://ethereum-sepolia-rpc.publicnode.com",
+      displayName: "Ethereum Sepolia Testnet",
+      blockExplorerUrl: "https://sepolia.etherscan.io",
+      ticker: "ETH",
+      tickerName: "Ethereum",
+      logo: "https://cryptologos.cc/logos/ethereum-eth-logo.png",
+    };
 
-interface HeaderProps {
-  onMenuClick: () => void;
-  totalEarnings: number;
+    const privateKeyProvider = new ethereum.EthereumPrivateKeyProvider({
+      config: { chainConfig },
+    });
+
+    web3auth = new modal.Web3Auth({
+      clientId,
+      web3AuthNetwork: base.WEB3AUTH_NETWORK.TESTNET,
+      privateKeyProvider,
+    });
+
+    return web3auth;
+  });
+
+  return web3AuthLoadPromise;
 }
 
-export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
+interface HeaderProps {
+  onMenuClick?: () => void;
+  totalEarnings?: number;
+}
+
+export default function Header({
+  onMenuClick = () => undefined,
+  totalEarnings = 0,
+}: HeaderProps) {
   const [provider, setProvider] = useState<IProvider | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [userInfo, setUserInfo] = useState<any>(null);
   const pathname = usePathname()
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const isMobile = useMediaQuery("(max-width: 768px)")
   const [balance, setBalance] = useState(0)
 
-  console.log('user info', userInfo);
-  
   useEffect(() => {
-    const init = async () => {
+    if (!localStorage.getItem('userEmail')) return;
+
+    const reconnect = async () => {
+      setLoading(true);
       try {
+        const auth = await loadWeb3Auth();
+        if (!auth) return;
+        web3auth = auth;
         await web3auth.initModal();
         setProvider(web3auth.provider);
 
@@ -87,17 +110,16 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
       }
     };
 
-    init();
+    reconnect();
   }, []);
 
   useEffect(() => {
     const fetchNotifications = async () => {
-      if (userInfo && userInfo.email) {
-        const user = await getUserByEmail(userInfo.email);
-        if (user) {
-          const unreadNotifications = await getUnreadNotifications(user.id);
-          setNotifications(unreadNotifications);
-        }
+      if (!userInfo?.email) return;
+      const headerData = await getHeaderData(userInfo.email);
+      if (headerData) {
+        setNotifications(headerData.notifications);
+        setBalance(headerData.balance);
       }
     };
 
@@ -110,19 +132,6 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
   }, [userInfo]);
 
   useEffect(() => {
-    const fetchUserBalance = async () => {
-      if (userInfo && userInfo.email) {
-        const user = await getUserByEmail(userInfo.email);
-        if (user) {
-          const userBalance = await getUserBalance(user.id);
-          setBalance(userBalance);
-        }
-      }
-    };
-
-    fetchUserBalance();
-
-    // Add an event listener for balance updates
     const handleBalanceUpdate = (event: CustomEvent) => {
       setBalance(event.detail);
     };
@@ -132,18 +141,20 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
     return () => {
       window.removeEventListener('balanceUpdated', handleBalanceUpdate as EventListener);
     };
-  }, [userInfo]);
+  }, []);
 
   const login = async () => {
-    if (!web3auth) {
-      console.log("web3auth not initialized yet");
+    const auth = await loadWeb3Auth();
+    if (!auth) {
+      console.warn("Web3Auth is not configured. Please add WEB3_AUTH_CLIENT_ID.");
       return;
     }
     try {
-      const web3authProvider = await web3auth.connect();
+      await auth.initModal();
+      const web3authProvider = await auth.connect();
       setProvider(web3authProvider);
       setLoggedIn(true);
-      const user = await web3auth.getUserInfo();
+      const user = await auth.getUserInfo();
       setUserInfo(user);
       if (user.email) {
         localStorage.setItem('userEmail', user.email);
@@ -161,7 +172,8 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
 
   const logout = async () => {
     if (!web3auth) {
-      console.log("web3auth not initialized yet");
+      setLoggedIn(false);
+      setUserInfo(null);
       return;
     }
     try {
@@ -176,7 +188,7 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
   };
 
   const getUserInfo = async () => {
-    if (web3auth.connected) {
+    if (web3auth?.connected) {
       const user = await web3auth.getUserInfo();
       setUserInfo(user);
       if (user.email) {
@@ -229,7 +241,7 @@ export default function Header({ onMenuClick, totalEarnings }: HeaderProps) {
             <Menu className="h-6 w-6" />
           </Button>
           <Link href="/" className="flex items-center">
-            <Image src="/w.png" alt="logo" width={60} height={60} />
+            <Image src="/w.png" alt="logo" width={60} height={60} priority />
             <div className="flex flex-col">
               <span className="font-bold text-lg text-gray-800">
                 Wastify

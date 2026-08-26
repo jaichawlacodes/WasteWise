@@ -1,0 +1,254 @@
+react-dom.development.js:38560 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+app-index.js:33 Warning: Extra attributes from the server: bis_skin_checked
+    at div
+    at MotionDOMComponent (webpack-internal:///(app-pages-browser)/./node_modules/framer-motion/dist/es/motion/index.mjs:62:65)
+    at Globe (webpack-internal:///(app-pages-browser)/./app/page.tsx:221:11)
+    at AnimatedGlobe
+    at div
+    at Home (webpack-internal:///(app-pages-browser)/./app/page.tsx:319:84)
+    at ClientPageRoot (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/client-page.js:14:11)
+    at InnerLayoutRouter (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/layout-router.js:243:11)
+    at RedirectErrorBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/redirect-boundary.js:74:9)
+    at RedirectBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/redirect-boundary.js:82:11)
+    at NotFoundErrorBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/not-found-boundary.js:76:9)
+    at NotFoundBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/not-found-boundary.js:84:11)
+    at LoadingBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/layout-router.js:349:11)
+    at ErrorBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/error-boundary.js:160:11)
+    at InnerScrollAndFocusHandler (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/layout-router.js:153:9)
+    at ScrollAndFocusHandler (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/layout-router.js:228:11)
+    at RenderFromTemplateContext (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/render-from-template-context.js:16:44)
+    at OuterLayoutRouter (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/layout-router.js:370:11)
+    at main
+    at div
+    at div
+    at body
+    at html
+    at RootLayout (Server)
+    at RedirectErrorBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/redirect-boundary.js:74:9)
+    at RedirectBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/redirect-boundary.js:82:11)
+    at NotFoundErrorBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/not-found-boundary.js:76:9)
+    at NotFoundBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/not-found-boundary.js:84:11)
+    at DevRootNotFoundBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/dev-root-not-found-boundary.js:33:11)
+    at ReactDevOverlay (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/react-dev-overlay/app/ReactDevOverlay.js:87:9)
+    at HotReload (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/react-dev-overlay/app/hot-reloader-client.js:321:11)
+    at Router (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/app-router.js:207:11)
+    at ErrorBoundaryHandler (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/error-boundary.js:113:9)
+    at ErrorBoundary (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/error-boundary.js:160:11)
+    at AppRouter (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/components/app-router.js:585:13)
+    at ServerRoot (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:112:27)
+    at Root (webpack-internal:///(app-pages-browser)/./node_modules/next/dist/client/app-index.js:117:11)
+window.console.error @ app-index.js:33
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+auth.js:133  WARNING! You are on testnet. Please set network: 'mainnet' or 'sapphire_mainnet' in production
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+warn-once.js:16 Image with src "/w.png" was detected as the Largest Contentful Paint (LCP). Please add the "priority" property if this image is above the fold.
+Read more: https://nextjs.org/docs/api-reference/next/image#priority
+warnOnce @ warn-once.js:16
+hot-reloader-client.js:187 [Fast Refresh] rebuilding
+hot-reloader-client.js:44 [Fast Refresh] done in 3258ms
+hot-reloader-client.js:187 [Fast Refresh] rebuilding
+hot-reloader-client.js:44 [Fast Refresh] done in 1466ms
+hot-reloader-client.js:187 [Fast Refresh] rebuilding
+hot-reloader-client.js:44 [Fast Refresh] done in 1590ms
+hot-reloader-client.js:187 [Fast Refresh] rebuilding
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+hot-reloader-client.js:44 [Fast Refresh] done in 6053ms
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+places.js:762 As of March 1st, 2025, google.maps.places.SearchBox is not available to new customers. At this time, google.maps.places.SearchBox is not scheduled to be discontinued and will continue to receive bug fixes for any major regressions. At least 12 months notice will be given before support is discontinued. Please see https://developers.google.com/maps/legacy for additional details.
+x9 @ places.js:762
+places.js:762 As of March 1st, 2025, google.maps.places.SearchBox is not available to new customers. At this time, google.maps.places.SearchBox is not scheduled to be discontinued and will continue to receive bug fixes for any major regressions. At least 12 months notice will be given before support is discontinued. Please see https://developers.google.com/maps/legacy for additional details.
+x9 @ places.js:762
+generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent:1  Failed to load resource: the server responded with a status of 404 ()
+app-index.js:33 Error verifying waste: GoogleGenerativeAIFetchError: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent: [404 ] This model models/gemini-2.0-flash is no longer available. Please update your code to use models/gemini-3.6-flash for the latest features and improvements.
+    at handleResponseNotOk (index.mjs:434:11)
+    at async makeRequest (index.mjs:407:9)
+    at async generateContent (index.mjs:852:22)
+    at async handleVerify (page.tsx:150:22)
+window.console.error @ app-index.js:33
+hot-reloader-client.js:187 [Fast Refresh] rebuilding
+hot-reloader-client.js:44 [Fast Refresh] done in 6960ms
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+Header.tsx:64 user info null
+(index):1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+(index):1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+(index):1 Uncaught (in promise) Error: A listener indicated an asynchronous response by returning true, but the message channel closed before a response was received
+PopupHandler.js:53 Cross-Origin-Opener-Policy policy would block the window.closed call.
+eval @ PopupHandler.js:53
+PopupHandler.js:53 Cross-Origin-Opener-Policy policy would block the window.closed call.
+eval @ PopupHandler.js:53
+PopupHandler.js:53 Cross-Origin-Opener-Policy policy would block the window.closed call.
+eval @ PopupHandler.js:53
+PopupHandler.js:53 Cross-Origin-Opener-Policy policy would block the window.closed call.
+eval @ PopupHandler.js:53
+PopupHandler.js:53 Cross-Origin-Opener-Policy policy would block the window.closed call.
+eval @ PopupHandler.js:53
+PopupHandler.js:53 Cross-Origin-Opener-Policy policy would block the window.closed call.
+eval @ PopupHandler.js:53
+PopupHandler.js:53 Cross-Origin-Opener-Policy policy would block the window.closed call.
+eval @ PopupHandler.js:53
+PopupHandler.js:53 Cross-Origin-Opener-Policy policy would block the window.closed call.
+eval @ PopupHandler.js:53
+rpc.ankr.com/eth_sepolia/b9cb2351a1335826351c8d81326df80584fc65b94dce69ac4fb8ed3eb0708f82:1  Failed to load resource: the server responded with a status of 401 ()
+app-index.js:33 JsonRpcError: Non-200 status code: '401'
+window.console.error @ app-index.js:33
+console.error @ hydration-error-info.js:63
+end @ jrpcEngine.js:89
+eval @ jrpc.js:192
+app-index.js:33 JsonRpcError: Non-200 status code: '401'
+window.console.error @ app-index.js:33
+console.error @ hydration-error-info.js:63
+end @ jrpcEngine.js:89
+eval @ jrpcEngine.js:224
+app-index.js:33 Object
+window.console.error @ app-index.js:33
+console.error @ hydration-error-info.js:63
+provider.sendAsync @ jrpcEngine.js:411
+app-index.js:33 Failed to connect with auth provider JsonRpcError: Non-200 status code: '401'
+    at getJsonRpcError (errors.js:46:10)
+    at Object.internal (errors.js:95:20)
+    at provider.sendAsync (jrpcEngine.js:416:70)
+    at async provider.request (jrpcEngine.js:437:17)
+    at async TransactionFormatter.getEIP1559Compatibility (formatter.js:193:25)
+    at async TransactionFormatter.init (formatter.js:42:32)
+    at async EthereumPrivateKeyProvider.setupProvider (EthereumPrivateKeyProvider.js:75:5)
+    at async AuthAdapter.connectWithProvider (authAdapter.js:261:7)
+    at async AuthAdapter.connect (authAdapter.js:103:7)
+window.console.error @ app-index.js:33
+console.error @ hydration-error-info.js:63
+connect @ authAdapter.js:106
+app-index.js:33 error JsonRpcError: Non-200 status code: '401'
+    at getJsonRpcError (errors.js:46:10)
+    at Object.internal (errors.js:95:20)
+    at provider.sendAsync (jrpcEngine.js:416:70)
+    at async provider.request (jrpcEngine.js:437:17)
+    at async TransactionFormatter.getEIP1559Compatibility (formatter.js:193:25)
+    at async TransactionFormatter.init (formatter.js:42:32)
+    at async EthereumPrivateKeyProvider.setupProvider (EthereumPrivateKeyProvider.js:75:5)
+    at async AuthAdapter.connectWithProvider (authAdapter.js:261:7)
+    at async AuthAdapter.connect (authAdapter.js:103:7) Non-200 status code: '401'
+window.console.error @ app-index.js:33
+console.error @ hydration-error-info.js:63
+eval @ loginModal.js:279
+safeApply @ safeEventEmitter.js:12
+emit @ safeEventEmitter.js:64
+eval @ noModal.js:324
+safeApply @ safeEventEmitter.js:12
+emit @ safeEventEmitter.js:64
+connect @ authAdapter.js:109
+app-index.js:33 error JsonRpcError: Non-200 status code: '401'
+    at getJsonRpcError (errors.js:46:10)
+    at Object.internal (errors.js:95:20)
+    at provider.sendAsync (jrpcEngine.js:416:70)
+    at async provider.request (jrpcEngine.js:437:17)
+    at async TransactionFormatter.getEIP1559Compatibility (formatter.js:193:25)
+    at async TransactionFormatter.init (formatter.js:42:32)
+    at async EthereumPrivateKeyProvider.setupProvider (EthereumPrivateKeyProvider.js:75:5)
+    at async AuthAdapter.connectWithProvider (authAdapter.js:261:7)
+    at async AuthAdapter.connect (authAdapter.js:103:7) Non-200 status code: '401'
+window.console.error @ app-index.js:33
+console.error @ hydration-error-info.js:63
+eval @ loginModal.js:279
+safeApply @ safeEventEmitter.js:12
+emit @ safeEventEmitter.js:64
+eval @ noModal.js:324
+safeApply @ safeEventEmitter.js:12
+emit @ safeEventEmitter.js:64
+connect @ authAdapter.js:109
+app-index.js:33 error JsonRpcError: Non-200 status code: '401'
+    at getJsonRpcError (errors.js:46:10)
+    at Object.internal (errors.js:95:20)
+    at provider.sendAsync (jrpcEngine.js:416:70)
+    at async provider.request (jrpcEngine.js:437:17)
+    at async TransactionFormatter.getEIP1559Compatibility (formatter.js:193:25)
+    at async TransactionFormatter.init (formatter.js:42:32)
+    at async EthereumPrivateKeyProvider.setupProvider (EthereumPrivateKeyProvider.js:75:5)
+    at async AuthAdapter.connectWithProvider (authAdapter.js:261:7)
+    at async AuthAdapter.connect (authAdapter.js:103:7) Non-200 status code: '401'
+window.console.error @ app-index.js:33
+console.error @ hydration-error-info.js:63
+eval @ loginModal.js:279
+safeApply @ safeEventEmitter.js:12
+emit @ safeEventEmitter.js:64
+eval @ noModal.js:324
+safeApply @ safeEventEmitter.js:12
+emit @ safeEventEmitter.js:64
+connect @ authAdapter.js:109
+app-index.js:33 error JsonRpcError: Non-200 status code: '401'
+    at getJsonRpcError (errors.js:46:10)
+    at Object.internal (errors.js:95:20)
+    at provider.sendAsync (jrpcEngine.js:416:70)
+    at async provider.request (jrpcEngine.js:437:17)
+    at async TransactionFormatter.getEIP1559Compatibility (formatter.js:193:25)
+    at async TransactionFormatter.init (formatter.js:42:32)
+    at async EthereumPrivateKeyProvider.setupProvider (EthereumPrivateKeyProvider.js:75:5)
+    at async AuthAdapter.connectWithProvider (authAdapter.js:261:7)
+    at async AuthAdapter.connect (authAdapter.js:103:7) Non-200 status code: '401'
+window.console.error @ app-index.js:33
+console.error @ hydration-error-info.js:63
+eval @ loginModal.js:279
+safeApply @ safeEventEmitter.js:12
+emit @ safeEventEmitter.js:64
+eval @ noModal.js:324
+safeApply @ safeEventEmitter.js:12
+emit @ safeEventEmitter.js:64
+connect @ authAdapter.js:109
+Header.tsx:161 Error during login: JsonRpcError: Non-200 status code: '401'
+    at getJsonRpcError (errors.js:46:10)
+    at Object.internal (errors.js:95:20)
+    at provider.sendAsync (jrpcEngine.js:416:70)
+    at async provider.request (jrpcEngine.js:437:17)
+    at async TransactionFormatter.getEIP1559Compatibility (formatter.js:193:25)
+    at async TransactionFormatter.init (formatter.js:42:32)
+    at async EthereumPrivateKeyProvider.setupProvider (EthereumPrivateKeyProvider.js:75:5)
+    at async AuthAdapter.connectWithProvider (authAdapter.js:261:7)
+    at async AuthAdapter.connect (authAdapter.js:103:7)
+window.console.error @ app-index.js:33
+console.error @ hydration-error-info.js:63
+(anonymous) @ Header.tsx:161
+app-index.js:33 Error while connecting to adapter: auth JsonRpcError: Non-200 status code: '401'
+    at getJsonRpcError (errors.js:46:10)
+    at Object.internal (errors.js:95:20)
+    at provider.sendAsync (jrpcEngine.js:416:70)
+    at async provider.request (jrpcEngine.js:437:17)
+    at async TransactionFormatter.getEIP1559Compatibility (formatter.js:193:25)
+    at async TransactionFormatter.init (formatter.js:42:32)
+    at async EthereumPrivateKeyProvider.setupProvider (EthereumPrivateKeyProvider.js:75:5)
+    at async AuthAdapter.connectWithProvider (authAdapter.js:261:7)
+    at async AuthAdapter.connect (authAdapter.js:103:7)
+window.console.error @ app-index.js:33
+console.error @ hydration-error-info.js:63
+eval @ modalManager.js:422
+index.js:144 Uncaught (in promise) WalletLoginError: Failed to connect with wallet. Failed to login with auth
+    at WalletLoginError.fromCode (index.js:144:12)
+    at WalletLoginError.connectionError (index.js:147:29)
+    at AuthAdapter.connect (authAdapter.js:115:74)Caused by: JsonRpcError: Non-200 status code: '401'
+    at getJsonRpcError (errors.js:46:10)
+    at Object.internal (errors.js:95:20)
+    at provider.sendAsync (jrpcEngine.js:416:70)
+    at async provider.request (jrpcEngine.js:437:17)
+    at async TransactionFormatter.getEIP1559Compatibility (formatter.js:193:25)
+    at async TransactionFormatter.init (formatter.js:42:32)
+    at async EthereumPrivateKeyProvider.setupProvider (EthereumPrivateKeyProvider.js:75:5)
+    at async AuthAdapter.connectWithProvider (authAdapter.js:261:7)
+    at async AuthAdapter.connect (authAdapter.js:103:7)
+fromCode @ index.js:144
+connectionError @ index.js:147
+connect @ authAdapter.js:115

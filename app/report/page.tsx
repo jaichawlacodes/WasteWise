@@ -111,11 +111,16 @@ export default function ReportPage() {
   const handleVerify = async () => {
     if (!file) return;
 
+    if (!geminiApiKey) {
+      toast.error("Gemini API key is not configured.");
+      return;
+    }
+
     setVerificationStatus("verifying");
 
     try {
       const genAI = new GoogleGenerativeAI(geminiApiKey!);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: process.env.NEXT_PUBLIC_GEMINI_MODEL ?? "gemini-3.6-flash" });
 
       const base64Data = await readFileAsBase64(file);
 
@@ -243,19 +248,16 @@ Respond **only** with the following JSON object and nothing else:
   useEffect(() => {
     const init = async () => {
       const email = localStorage.getItem("userEmail");
-
-      if (email) {
-        let user = await getUserByEmail(email);
-        if (!user) {
-          user = await createUser(email, "Anonymous User");
-        }
-        setUser(user);
-      } else {
-        // no login → allow anonymous usage
-        setUser(null);
-      }
-
-      const recentReports = await getRecentReports();
+      const userPromise = email
+        ? getUserByEmail(email).then((existingUser) => (
+            existingUser ?? createUser(email, "Anonymous User")
+          ))
+        : Promise.resolve(null);
+      const [user, recentReports] = await Promise.all([
+        userPromise,
+        getRecentReports(),
+      ]);
+      setUser(user);
       const formattedReports = recentReports.map((report) => ({
         id: report.id,
         location: report.location ?? "",
