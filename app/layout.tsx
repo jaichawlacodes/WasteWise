@@ -1,7 +1,6 @@
 import { Inter } from 'next/font/google'
 import "./globals.css"
 import dynamic from "next/dynamic"
-import 'leaflet/dist/leaflet.css'
 import { Toaster } from 'react-hot-toast'
 
 const Header = dynamic(() => import('@/components/Header'), {

@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from 'next/navigation'
 import { Button } from "@/components/ui/button"
-import { motion } from "framer-motion";
 import { Menu, Coins, Leaf, Search, Bell, User, ChevronDown, LogIn, LogOut } from "lucide-react"
 import { 
   DropdownMenu, 
@@ -211,7 +210,7 @@ export default function Header({
   };
 
   if (loading) {
-    return <div>Loading Web3Auth...</div>;
+    return <div></div>;
   }
 
   const navLinks = [
@@ -223,15 +222,10 @@ export default function Header({
   ];
 
   return (
-    <motion.header
-      initial={{ y: -100 }}
-      animate={{ y: 0 }}
-      transition={{ type: "spring", stiffness: 70 }}
-      className="bg-white shadow-md sticky top-0 z-50 backdrop-blur-lg border-b border-gray-200"
-    >
+    <header className="bg-white shadow-md sticky top-0 z-50 backdrop-blur-lg border-b border-gray-200">
       <div className="flex items-center justify-between px-4 py-3">
         {/* Logo & Hamburger */}
-        <motion.div whileHover={{ scale: 1.05 }} className="flex items-center">
+        <div className="flex items-center transition-transform duration-200 hover:scale-105">
           <Button
             variant="ghost"
             size="icon"
@@ -244,21 +238,21 @@ export default function Header({
             <Image src="/w.png" alt="logo" width={60} height={60} priority />
             <div className="flex flex-col">
               <span className="font-bold text-lg text-gray-800">
-                Wastify
+                WasteWise
               </span>
               <span className="text-[10px] text-gray-400 -mt-1">
-                CodeManthan
+                AI Waste Management
               </span>
             </div>
           </Link>
-        </motion.div>
+        </div>
 
         {/* Navigation Links */}
         <nav className="hidden md:flex gap-8 text-sm font-medium">
           {navLinks.map((link) => (
-            <motion.div
+            <div
               key={link.href}
-              whileHover={{ scale: 1.05, color: "#16a34a" }}
+              className="transition-transform duration-200 hover:scale-105"
             >
               <Link
                 href={link.href}
@@ -268,17 +262,17 @@ export default function Header({
               >
                 {link.label}
               </Link>
-            </motion.div>
+            </div>
           ))}
         </nav>
 
         {/* Right Actions */}
         <div className="flex items-center space-x-2">
           {isMobile && (
-            <motion.div whileTap={{ scale: 0.9 }}>
+            <div>
               <Button variant="ghost" size="icon">
               </Button>
-            </motion.div>
+            </div>
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -342,6 +336,6 @@ export default function Header({
           )}
         </div>
       </div>
-    </motion.header>
+    </header>
   )
 }

@@ -5,9 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'react-hot-toast'
 import { getWasteCollectionTasks, updateTaskStatus, saveReward, saveCollectedWaste,getUserByEmail, createUser } from '@/utils/db/action'
-import { GoogleGenerativeAI } from "@google/generative-ai"
-
-const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY
 
 type CollectionTask = {
   id: number
@@ -71,6 +68,7 @@ export default function CollectPage() {
   }, [])
 
   const [selectedTask, setSelectedTask] = useState<CollectionTask | null>(null)
+  const [verificationFile, setVerificationFile] = useState<File | null>(null)
   const [verificationImage, setVerificationImage] = useState<string | null>(null)
   const [verificationStatus, setVerificationStatus] = useState<'idle' | 'verifying' | 'success' | 'failure'>('idle')
   const [verificationResult, setVerificationResult] = useState<{
@@ -100,6 +98,7 @@ export default function CollectPage() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
+      setVerificationFile(file)
       const reader = new FileReader()
       reader.onloadend = () => {
         setVerificationImage(reader.result as string)
@@ -108,38 +107,15 @@ export default function CollectPage() {
     }
   }
 
-  const readFileAsBase64 = (dataUrl: string): string => {
-    return dataUrl.split(',')[1]
-  }
-
   const handleVerify = async () => {
-    if (!selectedTask || !verificationImage) {
+    if (!selectedTask || !verificationFile) {
       toast.error('Missing required information for verification.')
-      return
-    }
-
-    if (!geminiApiKey) {
-      toast.error('Gemini API key is not configured.')
       return
     }
 
     setVerificationStatus('verifying')
 
     try {
-      const genAI = new GoogleGenerativeAI(geminiApiKey!)
-      const model = genAI.getGenerativeModel({ model: process.env.NEXT_PUBLIC_GEMINI_MODEL ?? 'gemini-3.6-flash' })
-
-      const base64Data = readFileAsBase64(verificationImage)
-
-      const imageParts = [
-        {
-          inlineData: {
-            data: base64Data,
-            mimeType: 'image/jpeg',
-          },
-        },
-      ];
-
       const prompt = `You are an expert in waste management and recycling. Analyze this image and provide:
         1. Confirm if the waste type matches: ${selectedTask.wasteType}
         2. Estimate if the quantity matches: ${selectedTask.amount}
@@ -152,9 +128,13 @@ export default function CollectPage() {
           "confidence": confidence level as a number between 0 and 1
         }`;
 
-      const result = await model.generateContent([prompt, ...imageParts])
-      const response = await result.response
-      const text = response.text()
+      const formData = new FormData()
+      formData.append('file', verificationFile)
+      formData.append('prompt', prompt)
+      const result = await fetch('/api/gemini', { method: 'POST', body: formData })
+      const payload = await result.json()
+      if (!result.ok) throw new Error(payload.error ?? 'Gemini request failed')
+      const text = payload.text as string
 
       try {
         const cleanedText = text.replace(/```json|```/g, '').trim()

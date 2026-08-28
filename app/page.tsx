@@ -1,5 +1,4 @@
 "use client";
-import createGlobe from "cobe";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import {
@@ -21,10 +20,10 @@ import {
   getWasteCollectionTasks,
 } from "@/utils/db/action";
 import { PulsatingButton } from "@/components/PulsatingButton";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
 const poppins = Poppins({
-  weight: ["300", "400", "600"],
+  weight: ["400", "600"],
   subsets: ["latin"],
   display: "swap",
 });
@@ -108,12 +107,15 @@ type GlobeProps = {
 };
 
 function Globe({ className, config = GLOBE_CONFIG }: GlobeProps) {
-  let phi = 0;
+  const phi = useRef(0);
   const width = useRef(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const globeRef = useRef<{ toggle: (shouldRender: boolean) => void; destroy: () => void } | null>(null);
+  const globeRunning = useRef(false);
   const pointerInteracting = useRef<number | null>(null);
   const pointerInteractionMovement = useRef(0);
-  const [r, setR] = useState(0);
+  const rotation = useRef(0);
 
   const updatePointerInteraction = (value: number | null) => {
     pointerInteracting.current = value;
@@ -126,19 +128,16 @@ function Globe({ className, config = GLOBE_CONFIG }: GlobeProps) {
     if (pointerInteracting.current !== null) {
       const delta = clientX - pointerInteracting.current;
       pointerInteractionMovement.current = delta;
-      setR(delta / 200);
+      rotation.current = delta / 200;
     }
   };
 
-  const onRender = useCallback(
-    (state: Record<string, any>) => {
-      if (!pointerInteracting.current) phi += 0.0025;
-      state.phi = phi + r;
+  const onRender = useCallback((state: Record<string, number>) => {
+      if (!pointerInteracting.current) phi.current += 0.0025;
+      state.phi = phi.current + rotation.current;
       state.width = width.current;
       state.height = width.current;
-    },
-    [r]
-  );
+    }, []);
 
   const onResize = () => {
     if (canvasRef.current) {
@@ -151,27 +150,89 @@ function Globe({ className, config = GLOBE_CONFIG }: GlobeProps) {
     onResize();
 
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return () => window.removeEventListener("resize", onResize);
 
-    const globe = createGlobe(canvas, {
-      ...config,
-      width: width.current,
-      height: width.current,
-      onRender,
-    });
+    let cancelled = false;
+    let reducedMotion = false;
+    let startTimer: number | undefined;
 
-    setTimeout(() => (canvas.style.opacity = "1"));
-    return () => {
-      window.removeEventListener("resize", onResize);
-      globe.destroy();
+    const startGlobe = async () => {
+      if (cancelled || globeRef.current) return;
+
+      const { default: createGlobe } = await import("cobe");
+      if (cancelled || !canvas) return;
+
+      const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      reducedMotion = mediaQuery.matches;
+      const deviceMemory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory;
+      const lowPowerDevice = deviceMemory !== undefined && deviceMemory <= 4;
+      const smallScreen = window.matchMedia("(max-width: 768px)").matches;
+      const globe = createGlobe(canvas, {
+        ...config,
+        mapSamples: lowPowerDevice || smallScreen ? 2400 : config.mapSamples,
+        width: width.current,
+        height: width.current,
+        onRender,
+      });
+      globeRef.current = globe;
+      globeRunning.current = true;
+      canvas.style.opacity = "1";
+
+      if (reducedMotion) {
+        requestAnimationFrame(() => {
+          if (!cancelled && globeRunning.current) {
+            globe.toggle(false);
+            globeRunning.current = false;
+          }
+        });
+      }
     };
-  }, [onRender, config]);
+
+    const stopGlobe = () => {
+      if (globeRef.current && globeRunning.current) {
+        globeRef.current.toggle(false);
+        globeRunning.current = false;
+      }
+    };
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting && document.visibilityState === "visible") {
+        startTimer = window.setTimeout(startGlobe, 250);
+      } else {
+        if (startTimer) window.clearTimeout(startTimer);
+        stopGlobe();
+      }
+    }, { threshold: 0.1 });
+    observer.observe(container);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopGlobe();
+      } else if (globeRef.current && !globeRunning.current && !reducedMotion) {
+        globeRef.current.toggle(true);
+        globeRunning.current = true;
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      cancelled = true;
+      if (startTimer) window.clearTimeout(startTimer);
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("resize", onResize);
+      globeRef.current?.destroy();
+      globeRef.current = null;
+    };
+  }, [config, onRender]);
 
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.8 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 1 }}
+      ref={containerRef}
       className={`absolute inset-0 mx-auto aspect-[1/1] mt-[45vh] lg:mt-[35vh] w-full max-w-[700px] ${className}`}
     >
       <canvas
@@ -198,6 +259,7 @@ function AnimatedGlobe() {
 }
 
 export default function Home() {
+  const prefersReducedMotion = useReducedMotion();
   const [loggedIn, setLoggedIn] = useState(false);
   const [impactData, setImpactData] = useState({
     wasteCollected: 0,
@@ -254,17 +316,17 @@ export default function Home() {
       <section className="mb-20 min-h-[100vh] gap-4 flex flex-col items-center">
         <motion.h1
           className="text-6xl font-extrabold"
-          initial={{ y: 40, opacity: 0 }}
+          initial={prefersReducedMotion ? false : { y: 40, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.3, duration: 0.8 }}
+          transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.3, duration: 0.8 }}
         >
           Wastify
         </motion.h1>
         <motion.p
           className="text-3xl font-semibold text-center"
-          initial={{ y: 40, opacity: 0 }}
+          initial={prefersReducedMotion ? false : { y: 40, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ delay: 0.5, duration: 0.8 }}
+          transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.5, duration: 0.8 }}
         >
           Transforming <span className="text-green-500">Waste Management</span>{" "}
           into a Rewarding Experience
@@ -273,9 +335,9 @@ export default function Home() {
         {/* Buttons */}
         <motion.div
           className="absolute bottom-12 flex gap-8 justify-center w-full px-6 sm:px-0"
-          initial={{ opacity: 0 }}
+          initial={prefersReducedMotion ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1, duration: 0.8 }}
+          transition={prefersReducedMotion ? { duration: 0 } : { delay: 1, duration: 0.8 }}
         >
           <Link href="/report">
             <PulsatingButton className="shadow-2xl bg-white border-2 border-green-300 hover:bg-green-100 transition-all duration-200">
@@ -364,16 +426,14 @@ function FeatureCard({
   description: string;
 }) {
   return (
-    <motion.div
-      whileHover={{ scale: 1.1 }}
-      transition={{ type: "spring", stiffness: 150 }}
-      className="bg-white p-8 rounded-2xl shadow-lg flex flex-col items-center text-center transition-all hover:shadow-xl hover:scale-105"
+    <div
+      className="bg-white p-8 rounded-2xl shadow-lg flex flex-col items-center text-center transition-[transform,box-shadow] duration-200 hover:shadow-xl hover:scale-105 motion-reduce:transform-none"
     >
       <div className="bg-green-100 p-4 rounded-full mb-6 transition-all hover:bg-green-200">
         <Icon className="h-10 w-10 text-green-600 transform transition-all hover:scale-110" />
       </div>
       <h3 className="text-2xl font-semibold mb-4 text-gray-800">{title}</h3>
       <p className="text-gray-600">{description}</p>
-    </motion.div>
+    </div>
   );
 }
