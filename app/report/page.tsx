@@ -1,10 +1,8 @@
 "use client";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
 import { MapPin, Upload, CheckCircle, Loader } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { StandaloneSearchBox, useJsApiLoader } from "@react-google-maps/api";
-import { Libraries } from "@react-google-maps/api";
 import {
   createUser,
   getUserByEmail,
@@ -13,10 +11,10 @@ import {
 } from "../../utils/db/action";
 import { toast } from "react-hot-toast";
 
-const geminiApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-
-const libraries: Libraries = ["places"];
+const MapLibreLocation = dynamic(() => import("@/components/MapLibreLocation"), {
+  ssr: false,
+  loading: () => <div className="h-48 w-full rounded-xl border border-gray-200 bg-gray-50" />,
+});
 
 export default function ReportPage() {
   const [user, setUser] = useState<{
@@ -53,32 +51,10 @@ export default function ReportPage() {
     humanOrAnimalDetected: boolean;
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const [searchBox, setSearchBox] =
-    useState<google.maps.places.SearchBox | null>(null);
-
-  const { isLoaded } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: googleMapsApiKey!,
-    libraries: libraries,
-  });
-
-  const onLoad = useCallback((ref: google.maps.places.SearchBox) => {
-    setSearchBox(ref);
-  }, []);
-
-  const onPlacesChanged = () => {
-    if (searchBox) {
-      const places = searchBox.getPlaces();
-      if (places && places.length > 0) {
-        const place = places[0];
-        setNewReport((prev) => ({
-          ...prev,
-          location: place.formatted_address || "",
-        }));
-      }
-    }
-  };
+  const [locationCoordinates, setLocationCoordinates] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -99,40 +75,12 @@ export default function ReportPage() {
     }
   };
 
-  const readFileAsBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  };
-
   const handleVerify = async () => {
     if (!file) return;
-
-    if (!geminiApiKey) {
-      toast.error("Gemini API key is not configured.");
-      return;
-    }
 
     setVerificationStatus("verifying");
 
     try {
-      const genAI = new GoogleGenerativeAI(geminiApiKey!);
-      const model = genAI.getGenerativeModel({ model: process.env.NEXT_PUBLIC_GEMINI_MODEL ?? "gemini-3.6-flash" });
-
-      const base64Data = await readFileAsBase64(file);
-
-      const imageParts = [
-        {
-          inlineData: {
-            data: base64Data.split(",")[1],
-            mimeType: file.type,
-          },
-        },
-      ];
-
       const prompt = `
 You are an expert in waste management and recycling. Analyze the ENTIRE image very carefully and:
 
@@ -152,9 +100,13 @@ Respond **only** with the following JSON object and nothing else:
 }
 `;
 
-      const result = await model.generateContent([prompt, ...imageParts]);
-      const response = await result.response;
-      let text = response.text();
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("prompt", prompt);
+      const result = await fetch("/api/gemini", { method: "POST", body: formData });
+      const payload = await result.json();
+      if (!result.ok) throw new Error(payload.error ?? "Gemini request failed");
+      let text = payload.text as string;
 
       try {
         const jsonStart = text.indexOf("{");
@@ -214,7 +166,11 @@ Respond **only** with the following JSON object and nothing else:
         newReport.type,
         newReport.amount,
         preview || undefined,
-        verificationResult ? JSON.stringify(verificationResult) : undefined
+        undefined,
+        verificationResult ? JSON.stringify({
+          ...verificationResult,
+          locationCoordinates,
+        }) : undefined
       );
 
       if (!report) {
@@ -233,6 +189,7 @@ Respond **only** with the following JSON object and nothing else:
       setNewReport({ location: "", type: "", amount: "" });
       setFile(null);
       setPreview(null);
+      setLocationCoordinates(null);
       setVerificationStatus("idle");
       setVerificationResult(null);
 
@@ -373,34 +330,16 @@ Respond **only** with the following JSON object and nothing else:
             >
               Location
             </label>
-            {isLoaded ? (
-              <StandaloneSearchBox
-                onLoad={onLoad}
-                onPlacesChanged={onPlacesChanged}
-              >
-                <input
-                  type="text"
-                  id="location"
-                  name="location"
-                  value={newReport.location}
-                  onChange={handleInputChange}
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300"
-                  placeholder="Enter waste location"
-                />
-              </StandaloneSearchBox>
-            ) : (
-              <input
-                type="text"
-                id="location"
-                name="location"
-                value={newReport.location}
-                onChange={handleInputChange}
-                required
-                className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 transition-all duration-300"
-                placeholder="Enter waste location"
-              />
-            )}
+            <MapLibreLocation
+              value={newReport.location}
+              onChange={(location) => {
+                setLocationCoordinates(location ? {
+                  latitude: location.latitude,
+                  longitude: location.longitude,
+                } : null);
+                setNewReport((prev) => ({ ...prev, location: location?.address ?? prev.location }));
+              }}
+            />
           </div>
           <div>
             <label

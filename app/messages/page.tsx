@@ -1,6 +1,5 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import { Send, Loader2 } from 'lucide-react'
 
 type Message = {
@@ -14,13 +13,6 @@ export default function MessagesPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
-    if (!API_KEY && process.env.NODE_ENV === 'development') {
-      console.warn('Gemini API key is missing')
-    }
-  }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -38,14 +30,14 @@ export default function MessagesPage() {
     setInput('')
 
     try {
-      const API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY
-      if (!API_KEY) throw new Error('API key is missing')
-
-      const genAI = new GoogleGenerativeAI(API_KEY)
-      const model = genAI.getGenerativeModel({ model: process.env.NEXT_PUBLIC_GEMINI_MODEL ?? 'gemini-3.6-flash' })
-
-      const result = await model.generateContent(newMessage.content)
-      const responseText = result.response.text()
+      const response = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: newMessage.content }),
+      })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.error ?? 'Gemini request failed')
+      const responseText = payload.text as string
 
       const assistantMessage: Message = { role: 'assistant', content: responseText }
       setMessages(prev => [...prev, assistantMessage])
