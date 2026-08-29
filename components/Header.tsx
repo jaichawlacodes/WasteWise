@@ -2,18 +2,19 @@
 'use client'
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Menu, Coins, Leaf, Search, Bell, User, ChevronDown, LogIn, LogOut } from "lucide-react"
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { createUser, getHeaderData, markNotificationAsRead } from "@/utils/db/action"
+import { cachedCall } from "@/hooks/useClientCache"
 import Image from "next/image"
 
 const clientId = process.env.WEB3_AUTH_CLIENT_ID ?? "";
@@ -72,15 +73,33 @@ export default function Header({
   const [loading, setLoading] = useState(false);
   const [userInfo, setUserInfo] = useState<any>(null);
   const pathname = usePathname()
+  const router = useRouter()
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const isMobile = useMediaQuery("(max-width: 768px)")
   const [balance, setBalance] = useState(0)
 
+  // Pre-warm the router and prefetch every nav target so the first click
+  // doesn't pay the cost of lazy-loading the router + RSC POST + page bundle.
   useEffect(() => {
+    const warm = () => {
+      const targets = ['/', '/report', '/collect', '/rewards', '/calculator']
+      for (const href of targets) {
+        try { router.prefetch(href) } catch (e) { /* noop */ }
+      }
+    }
+    if (typeof window === 'undefined') return
+    if ('requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(warm, { timeout: 2000 })
+    } else {
+      setTimeout(warm, 0)
+    }
+  }, [router])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
     if (!localStorage.getItem('userEmail')) return;
 
     const reconnect = async () => {
-      setLoading(true);
       try {
         const auth = await loadWeb3Auth();
         if (!auth) return;
@@ -98,36 +117,64 @@ export default function Header({
               await createUser(user.email, user.name || 'Anonymous User');
             } catch (error) {
               console.error("Error creating user:", error);
-              // Handle the error appropriately, maybe show a message to the user
             }
           }
         }
       } catch (error) {
         console.error("Error initializing Web3Auth:", error);
-      } finally {
-        setLoading(false);
       }
+      // Note: we intentionally do not call setLoading here.
+      // Header must keep its real DOM during initial load to avoid layout shift.
     };
 
-    reconnect();
+    // Defer Web3Auth init until after first paint so navigation feels instant.
+    if ('requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(() => reconnect(), { timeout: 1500 });
+    } else {
+      setTimeout(reconnect, 0);
+    }
   }, []);
 
   useEffect(() => {
+    if (!userInfo?.email) return;
+
     const fetchNotifications = async () => {
-      if (!userInfo?.email) return;
-      const headerData = await getHeaderData(userInfo.email);
+      const headerData = await cachedCall(
+        `headerData:${userInfo.email}`,
+        () => getHeaderData(userInfo.email),
+        30_000,
+      );
       if (headerData) {
         setNotifications(headerData.notifications);
         setBalance(headerData.balance);
       }
     };
 
-    fetchNotifications();
+    // Defer the first poll so it never blocks initial render / navigation.
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let idleId: number | null = null;
 
-    // Set up periodic checking for new notifications
-    const notificationInterval = setInterval(fetchNotifications, 30000); // Check every 30 seconds
+    const start = () => {
+      fetchNotifications();
+      intervalId = setInterval(fetchNotifications, 30000);
+    };
 
-    return () => clearInterval(notificationInterval);
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleId = (window as any).requestIdleCallback(start, { timeout: 2000 });
+    } else {
+      idleId = window.setTimeout(start, 0);
+    }
+
+    return () => {
+      if (idleId !== null) {
+        if (typeof window !== 'undefined' && 'cancelIdleCallback' in window && (window as any).cancelIdleCallback) {
+          (window as any).cancelIdleCallback(idleId);
+        } else {
+          clearTimeout(idleId);
+        }
+      }
+      if (intervalId !== null) clearInterval(intervalId);
+    };
   }, [userInfo]);
 
   useEffect(() => {
@@ -210,7 +257,12 @@ export default function Header({
   };
 
   if (loading) {
-    return <div></div>;
+    // Render the same header shell so the layout doesn't shift while auth warms up.
+    return (
+      <header className="bg-white shadow-md sticky top-0 z-50 backdrop-blur-lg border-b border-gray-200">
+        <div className="flex items-center justify-between px-4 py-3" style={{ minHeight: '76px' }} />
+      </header>
+    );
   }
 
   const navLinks = [
@@ -256,6 +308,7 @@ export default function Header({
             >
               <Link
                 href={link.href}
+                prefetch={true}
                 className={`${
                   pathname === link.href ? "text-green-600" : "text-gray-700"
                 } transition-colors duration-200`}

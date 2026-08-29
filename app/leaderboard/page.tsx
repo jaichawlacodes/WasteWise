@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { getLeaderboardRewards, getUserByEmail } from '@/utils/db/action'
+import { cachedCall } from '@/hooks/useClientCache'
 import { Loader, Award, User, Trophy, Crown } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
@@ -24,8 +25,10 @@ export default function LeaderboardPage() {
       try {
         const userEmail = localStorage.getItem('userEmail')
         const [fetchedRewards, fetchedUser] = await Promise.all([
-          getLeaderboardRewards(),
-          userEmail ? getUserByEmail(userEmail) : Promise.resolve(null),
+          cachedCall('leaderboard', () => getLeaderboardRewards(), 30_000),
+          userEmail
+            ? cachedCall(`user:${userEmail}`, () => getUserByEmail(userEmail), 60_000)
+            : Promise.resolve(null),
         ])
         setRewards(fetchedRewards)
         setUser(fetchedUser)

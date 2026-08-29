@@ -9,6 +9,7 @@ import {
   createReport,
   getRecentReports,
 } from "../../utils/db/action";
+import { cachedCall } from "@/hooks/useClientCache";
 import { toast } from "react-hot-toast";
 
 const MapLibreLocation = dynamic(() => import("@/components/MapLibreLocation"), {
@@ -206,13 +207,17 @@ Respond **only** with the following JSON object and nothing else:
     const init = async () => {
       const email = localStorage.getItem("userEmail");
       const userPromise = email
-        ? getUserByEmail(email).then((existingUser) => (
-            existingUser ?? createUser(email, "Anonymous User")
-          ))
+        ? cachedCall(
+            `user:${email}`,
+            () => getUserByEmail(email).then((existingUser) => (
+              existingUser ?? createUser(email, "Anonymous User")
+            )),
+            60_000,
+          )
         : Promise.resolve(null);
       const [user, recentReports] = await Promise.all([
         userPromise,
-        getRecentReports(),
+        cachedCall('recentReports:50', () => getRecentReports(50), 20_000),
       ]);
       setUser(user);
       const formattedReports = recentReports.map((report) => ({
