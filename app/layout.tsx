@@ -5,7 +5,13 @@ import { Toaster } from 'react-hot-toast'
 
 const Header = dynamic(() => import('@/components/Header'), {
   ssr: false,
-  loading: () => <header className="h-[76px] border-b border-gray-200 bg-white" />,
+  loading: () => (
+    <header
+      className="bg-white shadow-md sticky top-0 z-50 backdrop-blur-lg border-b border-gray-200"
+      style={{ minHeight: '76px' }}
+      aria-hidden
+    />
+  ),
 })
 
 const inter = Inter({ subsets: ['latin'] })
@@ -26,7 +32,12 @@ export default function RootLayout({
             </main>
           </div>
         </div>
-        <Toaster />
+        <Toaster
+          position="top-right"
+          toastOptions={{
+            style: { pointerEvents: 'none' },
+          }}
+        />
       </body>
     </html>
   )

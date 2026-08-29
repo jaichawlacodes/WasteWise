@@ -19,6 +19,7 @@ import {
   getAllRewards,
   getWasteCollectionTasks,
 } from "@/utils/db/action";
+import { cachedCall } from "@/hooks/useClientCache";
 import { PulsatingButton } from "@/components/PulsatingButton";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
@@ -272,9 +273,9 @@ export default function Home() {
     async function fetchImpactData() {
       try {
         const [reports, rewards, tasks] = await Promise.all([
-          getRecentReports(100),
-          getAllRewards(),
-          getWasteCollectionTasks(100),
+          cachedCall('home:recentReports:100', () => getRecentReports(100), 30_000),
+          cachedCall('home:allRewards', () => getAllRewards(), 30_000),
+          cachedCall('home:wasteTasks:100', () => getWasteCollectionTasks(100), 30_000),
         ]);
 
         const wasteCollected = tasks.reduce((total, task) => {

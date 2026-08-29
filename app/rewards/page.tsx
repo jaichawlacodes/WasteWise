@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Coins, ArrowUpRight, ArrowDownRight, Gift, AlertCircle, Loader } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getUserByEmail, getRewardTransactions, getAvailableRewards, redeemReward, createTransaction } from '@/utils/db/action'
+import { cachedCall } from '@/hooks/useClientCache'
 import { toast } from 'react-hot-toast'
 
 type Transaction = {
@@ -34,17 +35,29 @@ export default function RewardsPage() {
       try {
         const userEmail = localStorage.getItem('userEmail')
         if (userEmail) {
-          const fetchedUser = await getUserByEmail(userEmail)
+          const fetchedUser = await cachedCall(
+            `user:${userEmail}`,
+            () => getUserByEmail(userEmail),
+            60_000,
+          )
           if (fetchedUser) {
             setUser(fetchedUser)
-            const fetchedTransactions = await getRewardTransactions(fetchedUser.id)
+            const fetchedTransactions = await cachedCall(
+              `rewardTx:${fetchedUser.id}`,
+              () => getRewardTransactions(fetchedUser.id),
+              20_000,
+            )
             setTransactions(fetchedTransactions as Transaction[])
             const calculatedBalance = fetchedTransactions.reduce((acc, transaction) => {
               return transaction.type.startsWith('earned') ? acc + transaction.amount : acc - transaction.amount
             }, 0)
             const normalizedBalance = Math.max(calculatedBalance, 0)
             setBalance(normalizedBalance)
-            const fetchedRewards = await getAvailableRewards(fetchedUser.id, normalizedBalance)
+            const fetchedRewards = await cachedCall(
+              `availableRewards:${fetchedUser.id}:${normalizedBalance}`,
+              () => getAvailableRewards(fetchedUser.id, normalizedBalance),
+              60_000,
+            )
             setRewards(fetchedRewards.filter(r => r.cost > 0))
           } else {
             toast.error('User not found. Please log in again.')

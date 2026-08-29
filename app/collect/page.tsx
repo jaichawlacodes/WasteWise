@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'react-hot-toast'
 import { getWasteCollectionTasks, updateTaskStatus, saveReward, saveCollectedWaste,getUserByEmail, createUser } from '@/utils/db/action'
+import { cachedCall } from '@/hooks/useClientCache'
 
 type CollectionTask = {
   id: number
@@ -31,31 +32,55 @@ export default function CollectPage() {
       setLoading(true)
       try {
         const userEmail = localStorage.getItem('userEmail')
+        const tasksPromise = cachedCall(
+          'wasteTasks:100',
+          () => getWasteCollectionTasks(100),
+          20_000,
+        )
 
         if (userEmail) {
-          let fetchedUser = await getUserByEmail(userEmail)
-          if (!fetchedUser) {
-            // auto-create user if missing
-            fetchedUser = await createUser(userEmail, "Anonymous User")
-          }
+          const userPromise = cachedCall(
+            `user:${userEmail}`,
+            async () => {
+              let u = await getUserByEmail(userEmail)
+              if (!u) {
+                // auto-create user if missing
+                u = await createUser(userEmail, "Anonymous User")
+              }
+              return u
+            },
+            60_000,
+          )
+          // Wait for both in parallel and render together to avoid an extra render.
+          const [fetchedUser, fetchedTasks] = await Promise.all([userPromise, tasksPromise])
           setUser(fetchedUser)
+          setTasks(fetchedTasks.map((task) => ({
+            id: task.id,
+            location: task.location ?? 'Unknown location',
+            wasteType: task.wasteType ?? 'Unknown waste',
+            amount: task.amount ?? 'Unknown amount',
+            status: task.status === 'in_progress' || task.status === 'completed' || task.status === 'verified'
+              ? task.status
+              : 'pending',
+            date: task.createdAt?.toLocaleDateString() ?? 'Unknown date',
+            collectorId: task.collectorId,
+          })))
         } else {
-          // allow anonymous usage → no redirect
+          // Anonymous: still show tasks as soon as they arrive.
           setUser(null)
+          const fetchedTasks = await tasksPromise
+          setTasks(fetchedTasks.map((task) => ({
+            id: task.id,
+            location: task.location ?? 'Unknown location',
+            wasteType: task.wasteType ?? 'Unknown waste',
+            amount: task.amount ?? 'Unknown amount',
+            status: task.status === 'in_progress' || task.status === 'completed' || task.status === 'verified'
+              ? task.status
+              : 'pending',
+            date: task.createdAt?.toLocaleDateString() ?? 'Unknown date',
+            collectorId: task.collectorId,
+          })))
         }
-
-        const fetchedTasks = await getWasteCollectionTasks(100)
-        setTasks(fetchedTasks.map((task) => ({
-          id: task.id,
-          location: task.location ?? 'Unknown location',
-          wasteType: task.wasteType ?? 'Unknown waste',
-          amount: task.amount ?? 'Unknown amount',
-          status: task.status === 'in_progress' || task.status === 'completed' || task.status === 'verified'
-            ? task.status
-            : 'pending',
-          date: task.createdAt?.toLocaleDateString() ?? 'Unknown date',
-          collectorId: task.collectorId,
-        })))
       } catch (error) {
         console.error('Error fetching user and tasks:', error)
         toast.error('Failed to load data. Please try again.')
