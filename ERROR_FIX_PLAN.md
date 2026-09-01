@@ -1,467 +1,439 @@
-IMPORTANT: Work strictly one phase at a time. Start with Phase 0 only. Do not implement Phase 1 or any later phase until Phase 0 is complete and validated. After completing Phase 0, report the results and proceed to Phase 1 only if there are no blockers.
+You are working on an existing Next.js application.
 
-You have a performance audit of this project in `Pasted text.txt` / the provided performance audit report.
+Your first task is INSPECTION ONLY.
 
-I want you to use that audit as the starting point and **actually optimize the entire website**, not just fix individual console errors.
+Do NOT modify any files.
+Do NOT install dependencies.
+Do NOT create files.
+Do NOT run commands that change the project.
 
-The goal is:
+Analyze the existing codebase and report back on:
 
-> **Make the website dramatically lighter, faster, and more responsive while preserving the existing visual design, functionality, interactions, and user experience.**
+1. Next.js architecture
 
-Do not blindly remove features or simplify the UI to achieve better numbers. The goal is to make the implementation more efficient.
+   * App Router structure
+   * API routes
+   * Server Actions, if any
+   * client vs server components
 
-## First: understand before changing
+2. External services
 
-Read the entire performance audit and then inspect the actual codebase yourself.
+   * Gemini integration
+   * geocoding integration
+   * Neon/Postgres/Drizzle setup
+   * any other external APIs
 
-Do not blindly trust every recommendation in the audit. Verify each important finding against the current code before changing anything.
+3. Existing performance work
 
-Before editing, create a prioritized implementation plan based on the actual code.
+   * client-side caching
+   * large client bundles
+   * dynamic imports/lazy loading
+   * any other performance optimizations
 
-The optimization should be performed in phases.
+4. Existing environment/deployment setup
 
----
+   * Vercel compatibility
+   * environment variables
+   * Node.js version
+   * build/start configuration
 
-# PHASE 0 — Establish a real baseline
+5. Redis opportunities
+   Identify ONLY places where Redis provides a real engineering benefit.
+   In particular, investigate:
 
-Before making substantial changes:
+   * API rate limiting
+   * expensive server-side requests
+   * geocoding
+   * Gemini requests
+   * notification polling, if present
 
-* Inspect the current production build.
-* Inspect route First Load JS sizes.
-* Add/use bundle analysis if appropriate.
-* Identify which dependencies actually contribute to client bundles.
-* Identify the largest client chunks/modules.
-* Run whatever local performance measurements are realistically available.
-* Do not fabricate Lighthouse/Core Web Vitals measurements.
-* Record the baseline so we can compare before vs after.
+6. Docker
+   Determine what would be required to run the existing Next.js application reproducibly in a production-style Docker container without replacing Vercel as the production deployment platform.
 
-The current audit reports these First Load JS sizes:
+7. CI
+   Determine what GitHub Actions checks are appropriate based on the project's CURRENT scripts and configuration.
 
-* `/` — 349 kB
-* `/report` — 345 kB
-* `/collect` — 313 kB
-* `/rewards` — 306 kB
-* `/leaderboard` — 297 kB
+8. Health check and logging
+   Identify the appropriate location for:
 
-Use the actual current build output as the source of truth rather than assuming these numbers are unchanged.
+   * a lightweight health endpoint
+   * useful server-side logging
+     Do not recommend unnecessary observability infrastructure.
 
----
+IMPORTANT CONSTRAINTS:
 
-# PHASE 1 — Fix the architecture and critical-path weight
+* The application must remain a standard Next.js App Router application deployed to Vercel.
+* Docker must NOT replace Vercel.
+* Do NOT recommend unnecessary AWS services or infrastructure just to make the project look more complex.
+* Existing UI must remain unchanged.
+* Existing performance optimizations must be preserved.
+* Do not replace existing libraries or architecture unless there is a demonstrated technical reason.
+* Redis must be server-side only.
+* The application runs in Vercel/serverless environments, so do not rely on in-memory state for distributed concerns such as rate limiting.
+* Prefer the smallest change that provides a real engineering benefit.
 
-Prioritize architectural improvements over micro-optimizations.
+At the end, provide:
 
-## Database/client boundary
+A. Current architecture summary
+B. Redis recommendation
+C. Docker recommendation
+D. CI recommendation
+E. Health-check/logging recommendation
+F. Files you expect would need to change
+G. Risks or compatibility concerns
 
-Investigate all imports from:
+Again: INSPECTION ONLY. Make no changes.
 
-* `utils/db/action.ts`
-* `utils/db/dbConfig.jsx`
-* Drizzle
-* Neon
+----
+Now implement the Redis portion of the project based on your inspection.
 
-from client components.
+Before making changes, briefly restate the Redis-related files and integration points you identified. Then implement only the Redis functionality described below.
 
-Move database operations behind an appropriate server boundary:
+GOAL:
 
-* Server Components
-* Server Actions
-* Route Handlers
+Use Redis primarily for server-side rate limiting of expensive/public API endpoints, with caching added ONLY where your inspection showed a clear benefit.
 
-where appropriate.
+IMPLEMENTATION:
 
-Ensure database credentials and server-only dependencies never enter browser bundles.
+1. Add the minimum required Redis dependency.
 
-Pay particular attention to `DATABASE_URL` and the current `next.config.mjs` configuration.
+2. Create a reusable server-side Redis client in an appropriate location such as:
+   lib/redis.ts
 
-Do NOT break authentication or authorization while doing this.
+   Requirements:
 
-Preserve the existing behavior of every page.
+   * Redis credentials come only from environment variables.
+   * Never expose Redis credentials to client components.
+   * Do not create a new connection unnecessarily for every request.
+   * Keep the implementation compatible with Vercel serverless execution.
 
----
+3. Create a reusable rate-limiting utility, for example:
+   lib/rate-limit.ts
 
-# PHASE 2 — Remove Web3Auth from the critical path
+   Requirements:
 
-The current Header globally loads Web3Auth.
+   * Use Redis-backed state.
+   * Do NOT rely on in-memory state.
+   * Limits must be configurable through environment variables.
+   * Return enough information for an API route to respond appropriately when a request is rejected.
+   * Use appropriate HTTP rate-limit behavior, including a 429 response when the limit is exceeded.
 
-This is a major priority.
+4. Apply rate limiting to the API routes where it provides a real benefit.
 
-The header should remain lightweight.
+   At minimum, evaluate:
 
-Do NOT initialize Web3Auth merely because someone visited the website.
+   * /api/gemini
+   * /api/geocode
 
-Instead:
+   Do not blindly apply rate limiting to every route.
 
-* Keep the login/connect UI available.
-* Dynamically load the heavy Web3Auth/provider code when the user actually initiates authentication.
-* Prevent Web3Auth/RPC initialization from blocking or competing with initial page rendering.
-* Avoid unnecessary RPC calls for anonymous visitors.
-* Preserve existing login/logout/reconnect behavior.
-* Handle failed authentication gracefully.
-* Do not change the product's authentication UX unnecessarily.
+5. Gemini:
+   Protect expensive Gemini/API usage from abuse.
+   Preserve all existing Gemini functionality and request/response behavior.
 
-Verify that Web3Auth and its heavy dependencies are actually removed from routes where they are not needed.
+6. Geocoding:
+   Add rate limiting if appropriate based on the existing implementation.
+   If the same geocoding requests are repeatedly made and caching is clearly safe, you may add a small Redis cache with a sensible TTL.
+   Do NOT add caching merely because Redis is available.
 
----
+7. Failure behavior:
 
-# PHASE 3 — Fix data fetching
+   Redis must not become a reason for the entire application to fail unnecessarily.
 
-Audit every page's data fetching.
+   Design the implementation so that a Redis outage is handled deliberately and safely. Document the chosen behavior.
 
-Look specifically for:
+   Do not silently bypass security controls without explaining the tradeoff.
 
-* sequential requests that could run concurrently
-* duplicate requests
-* repeated user lookups
-* fetching entire tables when only a few fields are required
-* unbounded queries
-* client-side pagination
-* fetching data only to calculate simple aggregates in JavaScript
+8. Environment variables:
 
-For example, if multiple independent queries are required, determine whether they should be:
+   Add/update an example environment file if the project has one.
 
-* executed concurrently,
-* consolidated into one server-side query,
-* cached/revalidated,
-* or replaced with an aggregate query.
+   Never commit actual credentials.
 
-Do not blindly use `Promise.all` everywhere. Prefer the architecture that minimizes total work, network requests, database load, and browser JavaScript.
+   Use clear names for:
 
-Add appropriate limits/pagination where data can grow without bound.
+   * Redis connection information
+   * rate-limit configuration
 
-Preserve the current UI and data behavior.
+9. Logging:
 
----
+   Add lightweight server-side logging for:
 
-# PHASE 4 — Reduce client-side JavaScript
+   * rate-limit rejections
+   * Redis failures
+   * cache hits/misses if caching is implemented
 
-This is one of the most important parts.
+   Do not add a logging framework unless the existing project actually requires one.
 
-Inspect every route currently using `"use client"`.
+STRICT CONSTRAINTS:
 
-Determine which portions genuinely require client-side JavaScript.
+* Do NOT change the UI.
+* Do NOT change the database schema.
+* Do NOT replace Neon, Drizzle, Gemini, or existing libraries.
+* Do NOT upgrade Next.js or unrelated dependencies.
+* Do NOT refactor unrelated code.
+* Do NOT move files unnecessarily.
+* Do NOT introduce AWS infrastructure.
+* Do NOT use in-memory rate limiting.
+* Do NOT expose Redis credentials to the browser.
+* Do NOT make Docker or Redis a requirement for the Vercel frontend to function beyond the intended server-side integration.
+* Preserve all existing performance optimizations.
 
-Convert unnecessarily client-rendered page shells/content into Server Components.
+After implementation:
 
-Use small client islands for things that actually need:
+1. Run the project's existing lint command.
+2. Run TypeScript type checking using the project's existing configuration.
+3. Run a production build if practical.
+4. Review the git diff.
+5. Report:
 
-* state
-* event handlers
-* browser APIs
-* forms
-* modals
-* interactive controls
-* authentication
-* maps
-* uploads
-* animations
+   * files changed
+   * dependencies added
+   * environment variables required
+   * endpoints protected
+   * caching added (if any)
+   * Redis failure behavior
+   * validation results
+   * any remaining concerns
 
-Do not convert something to a Server Component if it genuinely requires client behavior.
+If you discover that a proposed Redis change would risk breaking the existing application or Vercel deployment, STOP that portion and explain the issue instead of forcing an implementation.
 
-The objective is:
 
-**minimal client JavaScript + maximum useful server-rendered HTML.**
+---------
 
-Pay particular attention to:
+Now implement Docker and GitHub Actions CI.
 
-* `app/page.tsx`
-* `app/report/page.tsx`
-* `app/collect/page.tsx`
-* `app/rewards/page.tsx`
-* `app/leaderboard/page.tsx`
-* `app/calculator/page.tsx`
-* `app/settings/page.tsx`
-* `app/verify/page.tsx`
-* `app/messages/page.tsx`
+Keep the scope limited to Docker and CI. Do not refactor unrelated application code.
 
----
+## 1. Docker
 
-# PHASE 5 — Optimize the homepage globe
+Create a production-oriented Docker setup for the existing Next.js application.
 
-The Cobe globe is a major continuous runtime cost.
+Requirements:
 
-Do NOT remove it.
+* Create a `Dockerfile`.
+* Create a `.dockerignore`.
+* Use the existing Node.js/Next.js versions and package manager configuration.
+* Install dependencies reproducibly using the lockfile.
+* Build the existing Next.js application.
+* Run the application using its existing production start command.
+* Prefer a multi-stage build if it provides a meaningful reduction in the final image size.
+* Do not change the application's deployment architecture.
 
-Instead:
+IMPORTANT:
 
-* dynamically load it
-* avoid making it part of the critical initial JavaScript
-* initialize it after the important hero content is usable
-* pause it when it leaves the viewport
-* pause it when the browser tab is hidden
-* respect `prefers-reduced-motion`
-* reduce rendering quality/sample count on low-powered/mobile devices
-* avoid unnecessary React state updates during pointer interaction
-* avoid recreating the globe instance when pointer state changes
-* use refs for transient animation/pointer state where appropriate
+Docker is for reproducible local development/CI and production-style testing.
 
-Preserve the current visual appearance as much as practical on capable devices.
+Vercel remains the production deployment platform.
 
-For reduced-motion or low-power devices, provide a visually consistent static/low-cost alternative rather than simply removing the globe.
+Do NOT:
 
----
+* replace Vercel with Docker
+* add Kubernetes
+* add Docker Compose unless there is a demonstrated need
+* add AWS infrastructure
+* change Next.js configuration unnecessarily
+* modify application UI or behavior
 
-# PHASE 6 — Optimize Gemini and uploads
+The Docker build must not require secrets to be committed into the image.
 
-Inspect:
+If the application requires environment variables at build/runtime, document which variables are required without exposing their values.
 
-* `/collect`
-* `/report`
-* `/messages`
+## 2. GitHub Actions
 
-The audit indicates that Gemini and image data are currently handled client-side.
+Create:
 
-Move AI operations behind a server boundary where appropriate.
+`.github/workflows/ci.yml`
 
-Do not expose API keys in browser code.
+The workflow should run on:
 
-For image uploads:
+* pull requests
+* pushes to `main`
 
-* validate file type
-* validate file size
-* avoid unnecessarily retaining huge base64 strings in React state
-* use object URLs for previews where appropriate
-* resize/compress images where appropriate
-* avoid storing huge base64 payloads in database records if the product architecture allows a better approach
+Use the Node.js version appropriate for the existing project.
 
-Preserve the existing AI functionality and UI.
+The CI pipeline should:
 
-Do not reduce image quality so aggressively that AI accuracy or the user experience suffers.
+1. Check out the repository.
+2. Set up Node.js.
+3. Restore/cache npm dependencies appropriately.
+4. Install dependencies using the lockfile.
+5. Run ESLint using the project's existing lint configuration.
+6. Run TypeScript type checking.
+7. Run the production build.
 
----
+Do not invent additional checks unless the repository already supports them.
 
-# PHASE 7 — Optimize Google Maps
+If the existing `lint` script is incompatible with the installed Next.js version, diagnose the issue rather than silently changing unrelated dependencies.
 
-On `/report`:
+## 3. Docker validation in CI
 
-* avoid loading Google Maps/Places during initial page load if the user does not need autocomplete
-* load it when the user actually focuses/uses the location functionality
-* investigate the deprecated SearchBox API mentioned in the audit
-* migrate to the supported API if necessary
-* maintain a normal text-input fallback
-* preserve the existing location UX
+If practical, add a Docker build validation step to CI.
 
-The Maps library should not contribute to the initial cost of unrelated routes.
+The goal is to verify that the Dockerfile remains buildable.
 
----
+Do NOT run unnecessary containers or external services in CI.
 
-# PHASE 8 — Optimize animations without destroying the design
+## 4. Compatibility
 
-Do not remove the website's visual personality.
+The following must remain true:
 
-Audit Framer Motion usage.
+* `npm run build` works.
+* The application remains deployable to Vercel.
+* Redis integration from the previous step remains serverless-compatible.
+* Existing performance optimizations remain intact.
+* Existing database configuration remains intact.
+* Existing UI remains unchanged.
 
-Keep animations that materially contribute to the design.
+## 5. Validation
 
-Replace simple effects with CSS where that provides the same result.
+After implementation, run locally where possible:
 
-Pay particular attention to:
+* npm install/CI-equivalent dependency installation
+* lint
+* TypeScript type checking
+* production build
+* Docker image build
 
-* hover scale
-* opacity transitions
-* shadows
-* simple entrance animations
-* repeated card animations
-* unnecessary springs
-* simultaneous animations
+Then inspect the git diff.
 
-Add proper `prefers-reduced-motion` behavior.
+Report:
 
-Do not optimize animation merely by making everything static.
+* files created/changed
+* Docker strategy
+* Node.js version used
+* CI workflow steps
+* whether Docker build succeeded
+* whether lint/typecheck/build succeeded
+* any warnings or compatibility concerns
 
----
+Do not make unrelated improvements.
 
-# PHASE 9 — Fonts and assets
 
-Audit all fonts and public assets.
 
-Determine whether:
+------------
 
-* multiple font families are actually necessary
-* unused font files can be removed
-* unnecessary font weights are loaded
-* images are oversized
-* images can use more efficient formats
-* explicit image dimensions can prevent layout shifts
-* upload previews can be more memory efficient
 
-Preserve the current typography and visual identity.
+Now complete the final reliability and observability pass.
 
-Do not change fonts simply because another font is technically smaller unless the visual result remains acceptably identical.
+Keep this strictly scoped to:
 
----
+1. Health check
+2. Useful server-side logging
+3. Validation
+4. Final architecture audit
 
-# PHASE 10 — Remove confirmed dead weight
+Do NOT introduce new infrastructure unless there is a demonstrated need.
 
-Investigate:
+## 1. Health endpoint
 
-* Leaflet
-* inactive map code
-* inactive Lit/Web3 code
-* unused dependencies
-* globally imported CSS that isn't needed
-* unused components
-* unused assets
+Create a lightweight health endpoint at an appropriate location such as:
 
-**Do not delete anything merely because it appears unused.**
+`app/api/health/route.ts`
 
-First verify that it is genuinely dead and not a hidden/secondary product feature.
+Requirements:
 
-Only remove code/dependencies after confirming they are not required.
+* Return a simple successful response when the Next.js server environment is functioning.
+* Do not expose secrets.
+* Do not expose database credentials, Redis credentials, API keys, or internal implementation details.
+* Keep the endpoint fast.
+* Do not make expensive external API calls from the health endpoint.
 
----
+If you believe dependency checks such as Redis or database connectivity belong in a separate readiness check rather than the basic health endpoint, explain that distinction and implement only what is appropriate.
 
-# PHASE 11 — Validate after every major phase
+## 2. Server-side logging
 
-After each major phase:
+Review the existing server-side code and add lightweight, useful logging where appropriate.
 
-1. Run the production build.
-2. Run lint/type checking if configured.
-3. Run the relevant tests.
-4. Check for runtime errors.
-5. Check important routes.
-6. Check authentication.
-7. Check forms/uploads.
-8. Check AI functionality.
-9. Check maps.
-10. Check animations.
-11. Check mobile behavior.
+Prioritize:
 
-Do not proceed blindly if a phase introduces regressions.
+* API failures
+* Gemini failures
+* database errors
+* Redis failures
+* rate-limit rejections
+* cache hits/misses, ONLY where Redis caching was actually implemented
 
----
+Requirements:
 
-# PHASE 12 — Performance comparison
+* Use the existing logging approach if one already exists.
+* Do not add a logging framework just for the sake of adding one.
+* Never log secrets, API keys, tokens, passwords, Redis URLs, database credentials, or sensitive user data.
+* Avoid excessive logs inside frequently executed code.
+* Logs should contain enough context to diagnose failures without exposing sensitive information.
 
-After all optimizations:
+## 3. Reliability
 
-Compare the final project against the baseline.
+Review the Redis integration and make sure:
 
-Report actual measurements for:
+* Redis credentials remain server-side.
+* Rate limiting does not rely on process-local memory.
+* The implementation works with Vercel serverless execution.
+* Redis failures are handled according to the behavior established during the Redis implementation.
+* Redis does not unnecessarily become a single point of failure for unrelated application functionality.
 
-* route First Load JS
-* shared JavaScript
-* largest client chunks
-* build output
-* dependency/bundle changes
-* relevant request counts if measurable
+Do not change the architecture unless a concrete reliability problem is found.
 
-If Lighthouse is available, measure:
+## 4. Final validation
 
-* LCP
-* CLS
-* INP/TBT
-* performance score
+Run the appropriate checks:
 
-If a measurement is unavailable, explicitly say so.
+* lint
+* TypeScript type checking
+* production build
+* Docker build
+* any existing database/schema validation that does not modify production data
 
-Never invent performance improvements.
+If tests already exist, run them.
 
----
+Do NOT create a large new testing framework as part of this task.
 
-# IMPORTANT CONSTRAINTS
+## 5. Final architecture audit
 
-### Do NOT:
+Inspect the complete git diff and verify:
 
-* remove features just to improve performance
-* significantly redesign the UI
-* replace the visual identity
-* disable error reporting
-* suppress warnings instead of fixing them
-* remove authentication
-* remove the globe
-* remove AI functionality
-* remove Maps functionality
-* blindly replace libraries without measuring the benefit
-* make unrelated refactors
-* optimize tiny things before fixing architectural bottlenecks
-* claim success because `npm run build` passes
+* Existing UI is unchanged.
+* Existing performance optimizations are preserved.
+* Next.js App Router remains intact.
+* Server Actions remain intact.
+* Neon/Drizzle remain intact.
+* Gemini behavior remains intact.
+* Vercel remains the production deployment platform.
+* Docker is only an additional reproducibility/development/validation mechanism.
+* Redis is only used where it provides a real benefit.
+* No unnecessary dependencies or infrastructure were introduced.
+* No secrets were committed.
+* No unrelated refactoring was performed.
 
-### DO:
+If you find unnecessary changes introduced during the previous steps, do NOT automatically rewrite them. Report them clearly and recommend whether they should be reverted.
 
-* preserve functionality
-* preserve the visual design
-* reduce initial JavaScript
-* reduce unnecessary hydration
-* reduce network requests
-* reduce browser CPU/GPU work
-* defer expensive features until they're needed
-* move server work to the server
-* lazy-load genuinely heavy features
-* eliminate duplicate work
-* measure before and after
-* keep iterating when validation reveals problems
+## Final report
 
----
+Give me a concise final report containing:
 
-# Success criteria
+1. Architecture after changes
+2. Files added/modified
+3. Dependencies added
+4. Environment variables required
+5. Redis use cases
+6. Docker setup
+7. CI checks
+8. Health endpoint
+9. Logging added
+10. Validation results
+11. Any remaining risks or recommended follow-up work
 
-The final website should:
+The priority is:
 
-1. Feel substantially faster on initial load.
-2. Ship substantially less unnecessary JavaScript to the browser.
-3. Hydrate less code.
-4. Avoid loading expensive third-party functionality until needed.
-5. Avoid continuous expensive background work when it isn't visible.
-6. Make fewer unnecessary network/database requests.
-7. Handle large data sets more efficiently.
-8. Maintain the current visual design and functionality.
-9. Have no new console/runtime errors.
-10. Show measurable improvement over the original baseline.
+STABILITY > COMPATIBILITY > SECURITY > PERFORMANCE > NEW TECHNOLOGY.
 
-**Do not stop after creating the plan. Execute it.**
+Do not make additional changes after completing this audit.
 
-Work through the phases, validate each major change, fix regressions, and continue iterating until the project is genuinely lighter and faster.
 
-At the end, give me:
 
-* baseline vs final measurements
-* biggest improvements
-* files changed
-* dependencies removed/changed
-* architectural changes
-* remaining bottlenecks
-* any compromises made
-* any optimizations you intentionally did NOT make and why
 
-## EXECUTION RULE — IMPORTANT
+---------
 
-You must work **strictly one phase at a time**.
 
-Do NOT implement all phases in one pass.
 
-For each phase, follow this exact cycle:
 
-**1. Inspect → 2. Plan → 3. Implement → 4. Validate → 5. Review → 6. Only then move to the next phase**
-
-### After each phase:
-
-* Run the relevant build/tests/type-check/lint commands.
-* Inspect the git diff.
-* Verify that existing functionality still works.
-* Check for new console/runtime errors.
-* Compare performance measurements against the previous baseline where applicable.
-* Fix any regression you introduced before continuing.
-* Briefly summarize what changed and what the validation showed.
-
-### Important
-
-**Do not start the next phase until the current phase has been successfully validated.**
-
-If a phase reveals a problem that requires work from a later phase, handle only the minimum necessary dependency work, document it, and then return to the current phase.
-
-If you encounter a decision that could significantly change functionality, architecture, or visual appearance, stop and explain the tradeoff rather than making a destructive assumption.
-
-At the end of each phase, explicitly state:
-
-**PHASE X COMPLETE**
-
-* Changes made:
-* Files changed:
-* Validation performed:
-* Results:
-* Performance impact:
-* Regressions:
-* Ready for next phase: Yes/No
-
-Then proceed to the next phase only if the answer is **Yes**.
