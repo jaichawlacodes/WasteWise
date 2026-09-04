@@ -41,3 +41,12 @@ PERFORMANCE_COMPARISON_REPORT.txt
 nav-results.json
 consoleErrors.txt
 PROJECT_STRUCTURE.txt
+collected_wastes.sql
+notifications.sql
+reports.sql
+rewards.sql
+scripts/phase2-import-data.mjs
+scripts/phase2-step1-audit-source.mjs
+scripts/phase2-verify-runtime.mjs
+transactions.sql
+users.sql
