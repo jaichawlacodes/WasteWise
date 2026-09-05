@@ -321,7 +321,7 @@ export default function Home() {
           animate={{ y: 0, opacity: 1 }}
           transition={prefersReducedMotion ? { duration: 0 } : { delay: 0.3, duration: 0.8 }}
         >
-          Wastify
+          WasteWise
         </motion.h1>
         <motion.p
           className="text-3xl font-semibold text-center"

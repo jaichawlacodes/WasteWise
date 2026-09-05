@@ -1,6 +1,7 @@
-import {Metadata} from "next"
+import { Metadata } from "next"
 
-export const metadata : Metadata = {
-    title : "Ai-waste-management",
-    description : "AI Powered Waste Management Platform"
+export const metadata: Metadata = {
+  title: "WasteWise",
+  description: "AI Powered Waste Management Platform",
 }
+
