@@ -21,6 +21,20 @@ const clientId = process.env.WEB3_AUTH_CLIENT_ID ?? "";
 
 let web3auth: any = null;
 let web3AuthLoadPromise: Promise<any> | null = null;
+let web3AuthInitPromise: Promise<void> | null = null;
+
+async function initWeb3AuthModal() {
+  if (!web3AuthInitPromise) {
+    web3AuthInitPromise = web3auth.initModal();
+  }
+  try {
+    await web3AuthInitPromise;
+  } catch (error) {
+    // Don't cache a rejection — allow a genuine retry if init ever fails.
+    web3AuthInitPromise = null;
+    throw error;
+  }
+}
 
 async function loadWeb3Auth() {
   if (web3auth) return web3auth;
@@ -104,7 +118,7 @@ export default function Header({
         const auth = await loadWeb3Auth();
         if (!auth) return;
         web3auth = auth;
-        await web3auth.initModal();
+        await initWeb3AuthModal();
         setProvider(web3auth.provider);
 
         if (web3auth.connected) {
@@ -196,7 +210,7 @@ export default function Header({
       return;
     }
     try {
-      await auth.initModal();
+      await initWeb3AuthModal();
       const web3authProvider = await auth.connect();
       setProvider(web3authProvider);
       setLoggedIn(true);

@@ -2,7 +2,12 @@ import { Inter } from 'next/font/google'
 import "./globals.css"
 import dynamic from "next/dynamic"
 import { Toaster } from 'react-hot-toast'
+import type { Metadata } from 'next'
 
+export const metadata: Metadata = {
+  title: 'WasteWise',
+  description: 'AI Powered Waste Management Platform',
+}
 const Header = dynamic(() => import('@/components/Header'), {
   ssr: false,
   loading: () => (
