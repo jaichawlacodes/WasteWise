@@ -463,7 +463,7 @@ npm run verify:db
 
 ## License
 
-This project is private and unlicensed.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ---
 
