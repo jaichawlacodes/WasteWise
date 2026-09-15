@@ -8,12 +8,43 @@ import { eq, sql, and, desc } from 'drizzle-orm';
  * USERS
  */
 export async function createUser(email?: string, name?: string) {
+  const normalizedEmail = email?.trim() || null;
   try {
+    if (!normalizedEmail) return null;
+
+    // 1) Reuse an existing application user when the authenticated email
+    //    already exists (case/whitespace-insensitive). This keeps the
+    //    existing users.id and all its records stable.
+    const existing = await getUserByEmail(normalizedEmail);
+    if (existing) {
+      // Fill in a missing display name without overwriting an existing one.
+      if (name && !existing.name) {
+        try {
+          const [updated] = await db.update(Users)
+            .set({ name })
+            .where(eq(Users.id, existing.id))
+            .returning()
+            .execute();
+          return updated ?? existing;
+        } catch {
+          return existing;
+        }
+      }
+      return existing;
+    }
+
+    // 2) Create exactly one new user. onConflictDoNothing guards against a
+    //    duplicate-insert race between the lookup and the insert.
     const [user] = await db.insert(Users)
-      .values({ email: email ?? null, name: name ?? null })
+      .values({ email: normalizedEmail, name: name ?? null })
+      .onConflictDoNothing()
       .returning()
       .execute();
-    return user;
+
+    if (user) return user;
+
+    // 3) A concurrent request created the row in the meantime — reuse it.
+    return await getUserByEmail(normalizedEmail);
   } catch (error) {
     console.error("Error creating user:", error);
     return null;
@@ -21,9 +52,14 @@ export async function createUser(email?: string, name?: string) {
 }
 
 export async function getUserByEmail(email?: string) {
-  if (!email) return null;
+  const normalizedEmail = email?.trim().toLowerCase();
+  if (!normalizedEmail) return null;
   try {
-    const [user] = await db.select().from(Users).where(eq(Users.email, email)).execute();
+    const [user] = await db
+      .select()
+      .from(Users)
+      .where(sql`lower(${Users.email}) = ${normalizedEmail}`)
+      .execute();
     return user;
   } catch (error) {
     console.error("Error fetching user by email:", error);

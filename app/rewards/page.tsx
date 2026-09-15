@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Coins, ArrowUpRight, ArrowDownRight, Gift, AlertCircle, Loader } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getUserByEmail, getRewardTransactions, getAvailableRewards, redeemReward, createTransaction } from '@/utils/db/action'
+import { getAuthenticatedUserEmail } from '@/lib/supabase/client'
 import { cachedCall } from '@/hooks/useClientCache'
 import { toast } from 'react-hot-toast'
 
@@ -33,7 +34,7 @@ export default function RewardsPage() {
     const fetchUserDataAndRewards = async () => {
       setLoading(true)
       try {
-        const userEmail = localStorage.getItem('userEmail')
+        const userEmail = await getAuthenticatedUserEmail()
         if (userEmail) {
           const fetchedUser = await cachedCall(
             `user:${userEmail}`,

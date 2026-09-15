@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'react-hot-toast'
 import { getWasteCollectionTasks, updateTaskStatus, saveReward, saveCollectedWaste,getUserByEmail, createUser } from '@/utils/db/action'
+import { getAuthenticatedUserEmail } from '@/lib/supabase/client'
 import { cachedCall } from '@/hooks/useClientCache'
 
 type CollectionTask = {
@@ -31,7 +32,7 @@ export default function CollectPage() {
     const fetchUserAndTasks = async () => {
       setLoading(true)
       try {
-        const userEmail = localStorage.getItem('userEmail')
+        const userEmail = await getAuthenticatedUserEmail()
         const tasksPromise = cachedCall(
           'wasteTasks:100',
           () => getWasteCollectionTasks(100),

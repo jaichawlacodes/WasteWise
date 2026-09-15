@@ -4,9 +4,11 @@ const nextConfig = {
     eslint: {
         ignoreDuringBuilds: true,
     },
-    env:{
-        WEB3_AUTH_CLIENT_ID : process.env.WEB3_AUTH_CLIENT_ID,
-    }
+    experimental: {
+        serverActions: {
+            bodySizeLimit: '5mb',
+        },
+    },
 };
 
 export default nextConfig;

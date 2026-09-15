@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Wastify/WasteWise** - An AI-powered waste management platform that rewards users for reporting and collecting waste. Built with Next.js 14 App Router, PostgreSQL (Neon), and Web3Auth for wallet-based authentication.
+**Wastify/WasteWise** - An AI-powered waste management platform that rewards users for reporting and collecting waste. Built with Next.js 14 App Router, PostgreSQL (Supabase), and Supabase Auth for email magic link authentication.
 
 ## Development Commands
 
@@ -21,8 +21,8 @@ npm run db:studio    # Open Drizzle Studio (database GUI)
 
 ### Tech Stack
 - **Framework:** Next.js 14.2.16 (App Router)
-- **Database:** PostgreSQL via Neon + Drizzle ORM
-- **Auth:** Web3Auth (Ethereum wallet-based, Sepolia testnet)
+- **Database:** PostgreSQL via Supabase + Drizzle ORM
+- **Auth:** Supabase Auth (email magic links via @supabase/ssr)
 - **UI:** Radix UI + Tailwind CSS (shadcn/ui pattern)
 - **AI:** Google Generative AI (Gemini) for waste verification
 - **Maps:** MapLibre GL + Leaflet
@@ -35,7 +35,7 @@ app/                    # Next.js App Router pages
   api/geocode/route.ts  # Geocoding API endpoint
   */page.tsx            # Route pages (report, collect, rewards, etc.)
 components/             # React components
-  Header.tsx            # Main nav with Web3Auth, notifications, balance
+  Header.tsx            # Main nav with Supabase Auth, notifications, balance
   ui/                   # shadcn/ui primitives (button, card, badge, etc.)
 utils/db/
   schema.ts             # Drizzle schema definitions
@@ -44,15 +44,21 @@ hooks/
   useClientCache.ts     # Client-side cache for server action calls
   useMediaQuery.ts      # Responsive breakpoint hook
 lib/utils.ts            # cn() utility for Tailwind class merging
+lib/supabase/
+  client.ts             # Browser Supabase client (createBrowserClient)
+  server.ts             # Server Supabase client (createServerClient)
+middleware.ts           # Session refresh middleware (no route protection)
 ```
 
 ### Key Patterns
 
 **Authentication Flow:**
-- Web3Auth initializes lazily in `Header.tsx` (deferred with `requestIdleCallback`)
-- User email stored in `localStorage` after wallet connection
-- `createUser()` server action creates/updates user in DB
-- No traditional session/JWT - relies on Web3Auth provider
+- Supabase Auth via `@supabase/ssr` with cookie-based sessions
+- Browser client (`lib/supabase/client.ts`) and server client (`lib/supabase/server.ts`)
+- Middleware (`middleware.ts`) refreshes sessions on every request (no route protection)
+- Email OTP magic link: `signInWithOtp` → email redirect → `onAuthStateChange` in Header
+- `createUser()` server action creates/updates user in DB (idempotent, case-insensitive)
+- User email resolved from Supabase session, not localStorage
 
 **Data Access:**
 - All DB operations are server actions in `utils/db/action.ts`
@@ -67,7 +73,8 @@ lib/utils.ts            # cn() utility for Tailwind class merging
 
 **Environment Variables:**
 - `DATABASE_URL` - PostgreSQL connection string (Neon)
-- `WEB3_AUTH_CLIENT_ID` - Web3Auth project ID
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` - Supabase publishable (anon) key
 - `GEMINI_API_KEY` / `NEXT_PUBLIC_GEMINI_API_KEY` - Google AI key
 - `GEMINI_MODEL` - Model ID (defaults to `gemini-3.6-flash`)
 

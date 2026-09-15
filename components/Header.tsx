@@ -15,62 +15,26 @@ import { Badge } from "@/components/ui/badge"
 import { useMediaQuery } from "@/hooks/useMediaQuery"
 import { createUser, getHeaderData, markNotificationAsRead } from "@/utils/db/action"
 import { cachedCall } from "@/hooks/useClientCache"
+import { createClient } from "@/lib/supabase/client"
+import { toast } from "react-hot-toast"
+import { Input } from "@/components/ui/input"
 import Image from "next/image"
 
-const clientId = process.env.WEB3_AUTH_CLIENT_ID ?? "";
+type AuthUserInfo = {
+  email: string | null;
+  name: string | null;
+};
 
-let web3auth: any = null;
-let web3AuthLoadPromise: Promise<any> | null = null;
-let web3AuthInitPromise: Promise<void> | null = null;
-
-async function initWeb3AuthModal() {
-  if (!web3AuthInitPromise) {
-    web3AuthInitPromise = web3auth.initModal();
-  }
-  try {
-    await web3AuthInitPromise;
-  } catch (error) {
-    // Don't cache a rejection — allow a genuine retry if init ever fails.
-    web3AuthInitPromise = null;
-    throw error;
-  }
-}
-
-async function loadWeb3Auth() {
-  if (web3auth) return web3auth;
-  if (!clientId) return null;
-  if (web3AuthLoadPromise) return web3AuthLoadPromise;
-
-  web3AuthLoadPromise = Promise.all([
-    import("@web3auth/modal"),
-    import("@web3auth/base"),
-    import("@web3auth/ethereum-provider"),
-  ]).then(([modal, base, ethereum]) => {
-    const chainConfig = {
-      chainNamespace: base.CHAIN_NAMESPACES.EIP155,
-      chainId: "0xaa36a7",
-      rpcTarget: "https://ethereum-sepolia-rpc.publicnode.com",
-      displayName: "Ethereum Sepolia Testnet",
-      blockExplorerUrl: "https://sepolia.etherscan.io",
-      ticker: "ETH",
-      tickerName: "Ethereum",
-      logo: "https://cryptologos.cc/logos/ethereum-eth-logo.png",
-    };
-
-    const privateKeyProvider = new ethereum.EthereumPrivateKeyProvider({
-      config: { chainConfig },
-    });
-
-    web3auth = new modal.Web3Auth({
-      clientId,
-      web3AuthNetwork: base.WEB3AUTH_NETWORK.TESTNET,
-      privateKeyProvider,
-    });
-
-    return web3auth;
-  });
-
-  return web3AuthLoadPromise;
+// Map a Supabase Auth user to the shape the header needs (email is the app
+// identity) plus a display name.
+function mapAuthUser(user: any): AuthUserInfo | null {
+  if (!user) return null;
+  const name =
+    user.user_metadata?.full_name ??
+    user.user_metadata?.name ??
+    user.email ??
+    null;
+  return { email: user.email ?? null, name };
 }
 
 interface HeaderProps {
@@ -82,15 +46,17 @@ export default function Header({
   onMenuClick = () => undefined,
   totalEarnings = 0,
 }: HeaderProps) {
-  const [provider, setProvider] = useState<IProvider | null>(null);
   const [loggedIn, setLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [userInfo, setUserInfo] = useState<any>(null);
+  const [userInfo, setUserInfo] = useState<AuthUserInfo | null>(null);
   const pathname = usePathname()
   const router = useRouter()
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const isMobile = useMediaQuery("(max-width: 768px)")
   const [balance, setBalance] = useState(0)
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginEmail, setLoginEmail] = useState("");
+  const [sendingLink, setSendingLink] = useState(false);
 
   // Pre-warm the router and prefetch every nav target so the first click
   // doesn't pay the cost of lazy-loading the router + RSC POST + page bundle.
@@ -111,42 +77,51 @@ export default function Header({
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!localStorage.getItem('userEmail')) return;
 
-    const reconnect = async () => {
-      try {
-        const auth = await loadWeb3Auth();
-        if (!auth) return;
-        web3auth = auth;
-        await initWeb3AuthModal();
-        setProvider(web3auth.provider);
+    let supabase: ReturnType<typeof createClient> | null = null;
+    try {
+      supabase = createClient();
+    } catch (error) {
+      console.warn("Supabase is not configured. Login will be unavailable.");
+      return;
+    }
 
-        if (web3auth.connected) {
-          setLoggedIn(true);
-          const user = await web3auth.getUserInfo();
-          setUserInfo(user);
-          if (user.email) {
-            localStorage.setItem('userEmail', user.email);
-            try {
-              await createUser(user.email, user.name || 'Anonymous User');
-            } catch (error) {
-              console.error("Error creating user:", error);
-            }
-          }
+    let mounted = true;
+
+    const applySessionUser = (user: any) => {
+      if (!mounted) return;
+      const info = mapAuthUser(user);
+      if (info?.email) {
+        setLoggedIn(true);
+        setUserInfo(info);
+        // Ensure the application user row exists (idempotent in action.ts).
+        try {
+          createUser(info.email, info.name || 'Anonymous User');
+        } catch (error) {
+          console.error("Error creating user:", error);
         }
-      } catch (error) {
-        console.error("Error initializing Web3Auth:", error);
+      } else {
+        setLoggedIn(false);
+        setUserInfo(null);
       }
-      // Note: we intentionally do not call setLoading here.
-      // Header must keep its real DOM during initial load to avoid layout shift.
     };
 
-    // Defer Web3Auth init until after first paint so navigation feels instant.
-    if ('requestIdleCallback' in window) {
-      (window as any).requestIdleCallback(() => reconnect(), { timeout: 1500 });
-    } else {
-      setTimeout(reconnect, 0);
-    }
+    // Establish the initial session (also exchanges the magic-link code after
+    // an email OTP redirect and restores the session after a page refresh).
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      applySessionUser(session?.user ?? null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        applySessionUser(session?.user ?? null);
+      },
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -203,63 +178,69 @@ export default function Header({
     };
   }, []);
 
-  const login = async () => {
-    const auth = await loadWeb3Auth();
-    if (!auth) {
-      console.warn("Web3Auth is not configured. Please add WEB3_AUTH_CLIENT_ID.");
-      return;
-    }
+  const login = () => {
+    setShowLogin((prev) => !prev);
+  };
+
+  const handleSendLoginLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = loginEmail.trim();
+    if (!email) return;
+
+    setSendingLink(true);
     try {
-      await initWeb3AuthModal();
-      const web3authProvider = await auth.connect();
-      setProvider(web3authProvider);
-      setLoggedIn(true);
-      const user = await auth.getUserInfo();
-      setUserInfo(user);
-      if (user.email) {
-        localStorage.setItem('userEmail', user.email);
-        try {
-          await createUser(user.email, user.name || 'Anonymous User');
-        } catch (error) {
-          console.error("Error creating user:", error);
-          // Handle the error appropriately, maybe show a message to the user
-        }
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { emailRedirectTo: window.location.origin },
+      });
+
+      if (error) {
+        console.error("Error sending login link:", error);
+        toast.error(error.message || "Failed to send login link.");
+        return;
       }
+
+      setShowLogin(false);
+      setLoginEmail("");
+      toast.success("Login link sent! Check your email.");
     } catch (error) {
-      console.error("Error during login:", error);
+      console.error("Error sending login link:", error);
+      toast.error("Failed to send login link.");
+    } finally {
+      setSendingLink(false);
     }
   };
 
   const logout = async () => {
-    if (!web3auth) {
-      setLoggedIn(false);
-      setUserInfo(null);
-      return;
-    }
     try {
-      await web3auth.logout();
-      setProvider(null);
-      setLoggedIn(false);
-      setUserInfo(null);
-      localStorage.removeItem('userEmail');
+      const supabase = createClient();
+      await supabase.auth.signOut();
     } catch (error) {
       console.error("Error during logout:", error);
     }
+    setLoggedIn(false);
+    setUserInfo(null);
+    // Clean up the legacy local marker in existing browsers.
+    localStorage.removeItem('userEmail');
   };
 
   const getUserInfo = async () => {
-    if (web3auth?.connected) {
-      const user = await web3auth.getUserInfo();
-      setUserInfo(user);
-      if (user.email) {
-        localStorage.setItem('userEmail', user.email);
+    try {
+      const supabase = createClient();
+      const { data } = await supabase.auth.getUser();
+      const info = mapAuthUser(data?.user ?? null);
+      if (info?.email) {
+        setLoggedIn(true);
+        setUserInfo(info);
         try {
-          await createUser(user.email, user.name || 'Anonymous User');
+          await createUser(info.email, info.name || 'Anonymous User');
         } catch (error) {
           console.error("Error creating user:", error);
-          // Handle the error appropriately, maybe show a message to the user
         }
       }
+    } catch (error) {
+      console.error("Error fetching user info:", error);
     }
   };
 
@@ -402,6 +383,36 @@ export default function Header({
             </DropdownMenu>
           )}
         </div>
+
+        {showLogin && (
+          <div
+            className="fixed inset-0 z-50 flex items-start justify-end p-4 pt-20 sm:pt-24"
+            onClick={() => setShowLogin(false)}
+          >
+            <div
+              className="bg-white rounded-lg shadow-xl border border-gray-200 p-5 w-full max-w-sm"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-base font-semibold text-gray-800 mb-1">Log in with email</p>
+              <p className="text-sm text-gray-500 mb-4">
+                We&apos;ll email you a magic link to sign you in.
+              </p>
+              <form onSubmit={handleSendLoginLink} className="space-y-3">
+                <Input
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  autoFocus
+                />
+                <Button type="submit" className="w-full" disabled={sendingLink}>
+                  {sendingLink ? "Sending..." : "Send login link"}
+                </Button>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   )

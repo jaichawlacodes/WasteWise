@@ -10,6 +10,7 @@ import {
   getRecentReports,
 } from "../../utils/db/action";
 import { cachedCall } from "@/hooks/useClientCache";
+import { getAuthenticatedUserEmail } from "@/lib/supabase/client";
 import { toast } from "react-hot-toast";
 
 const MapLibreLocation = dynamic(() => import("@/components/MapLibreLocation"), {
@@ -205,7 +206,7 @@ Respond **only** with the following JSON object and nothing else:
 
   useEffect(() => {
     const init = async () => {
-      const email = localStorage.getItem("userEmail");
+      const email = await getAuthenticatedUserEmail();
       const userPromise = email
         ? cachedCall(
             `user:${email}`,

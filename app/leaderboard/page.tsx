@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { getLeaderboardRewards, getUserByEmail } from '@/utils/db/action'
+import { getAuthenticatedUserEmail } from '@/lib/supabase/client'
 import { cachedCall } from '@/hooks/useClientCache'
 import { Loader, Award, User, Trophy, Crown } from 'lucide-react'
 import { toast } from 'react-hot-toast'
@@ -23,7 +24,7 @@ export default function LeaderboardPage() {
     const fetchRewardsAndUser = async () => {
       setLoading(true)
       try {
-        const userEmail = localStorage.getItem('userEmail')
+        const userEmail = await getAuthenticatedUserEmail()
         const [fetchedRewards, fetchedUser] = await Promise.all([
           cachedCall('leaderboard', () => getLeaderboardRewards(), 30_000),
           userEmail
