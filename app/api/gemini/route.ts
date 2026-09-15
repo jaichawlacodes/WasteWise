@@ -1,8 +1,27 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { NextResponse } from 'next/server'
+import { checkRateLimit, getClientIp, parsePositiveInt } from '@/lib/rate-limit'
+import type { RateLimitResult } from '@/lib/rate-limit'
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const allowedImageTypes = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+
+// Rate-limit configuration (server-side only; env values are optional).
+const GEMINI_MAX = parsePositiveInt(process.env.RATE_LIMIT_GEMINI_MAX, 10)
+const GEMINI_WINDOW = parsePositiveInt(process.env.RATE_LIMIT_GEMINI_WINDOW, 60)
+const GEMINI_HOURLY_MAX = parsePositiveInt(process.env.RATE_LIMIT_GEMINI_HOURLY_MAX, 120)
+const GEMINI_HOURLY_WINDOW = parsePositiveInt(process.env.RATE_LIMIT_GEMINI_HOURLY_WINDOW, 3600)
+const STRICT = process.env.RATE_LIMIT_STRICT === '1'
+
+// 429 with a safe message and, where possible, a Retry-After hint.
+function rateLimited(retryAfterSeconds?: number) {
+  const headers: Record<string, string> = {}
+  if (retryAfterSeconds) headers['Retry-After'] = String(retryAfterSeconds)
+  return NextResponse.json(
+    { error: 'Too many requests. Please try again later.' },
+    { status: 429, headers },
+  )
+}
 
 function getModel() {
   const apiKey = process.env.GEMINI_API_KEY ?? process.env.NEXT_PUBLIC_GEMINI_API_KEY
@@ -15,6 +34,30 @@ function getModel() {
 }
 
 export async function POST(request: Request) {
+  // Rate limiting runs before any expensive Gemini work so blocked requests
+  // never reach the model.
+  const ip = getClientIp(request)
+
+  let burst: RateLimitResult | null = null
+  let hourly: RateLimitResult | null = null
+  try {
+    burst = await checkRateLimit(`rl:gemini:${ip}`, GEMINI_MAX, GEMINI_WINDOW)
+    hourly = await checkRateLimit(`rl:gemini:${ip}:hourly`, GEMINI_HOURLY_MAX, GEMINI_HOURLY_WINDOW)
+  } catch (error) {
+    if (STRICT) {
+      // Fail closed: refuse rather than allow unbounded model spend.
+      return NextResponse.json(
+        { error: 'Service temporarily unavailable. Please try again later.' },
+        { status: 503 },
+      )
+    }
+    // Fail open by default: Redis is an availability tool, not a dependency.
+    console.warn('Rate limiter unavailable; allowing request.', error)
+  }
+
+  if (burst && !burst.allowed) return rateLimited(burst.retryAfterSeconds)
+  if (hourly && !hourly.allowed) return rateLimited(hourly.retryAfterSeconds)
+
   try {
     const contentType = request.headers.get('content-type') ?? ''
     const model = getModel()
