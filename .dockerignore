@@ -1,0 +1,30 @@
+# ── Environment / secrets ──
+.env
+.env.*
+!.env.example
+
+# ── Version control ──
+.git
+.gitignore
+
+# ── Dependencies / build artifacts ──
+node_modules
+.next
+
+# ── Documentation / editor / OS ──
+README.md
+*.md
+.vscode
+.idea
+*.log
+.DS_Store
+Thumbs.db
+
+# ── Docker self ──
+Dockerfile
+.dockerignore
+
+# ── Scripts / database artifacts ──
+scripts/
+*.sql
+*.dump
